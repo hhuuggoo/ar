@@ -97,3 +97,17 @@ offset = 0
 while offset < ds.shape[0]:
     t.append(ds[offset:offset+chunksize])
     offset += chunksize
+
+
+f = h5py.File('latlong3.hdf5', mode='r')
+ds = f['data']
+f2 = h5py.File('columnar.hdf5', mode='w')
+for idx, col in enumerate(ds.dtype.names):
+    print col
+    f2.create_dataset(col,
+                      data=ds[col],
+                      compression='lzf')
+
+import pdb; pdb.set_trace()
+st = time.time()
+ds = ds[::5000, 'latitude','longitude']
