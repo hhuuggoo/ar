@@ -7,30 +7,6 @@ import scipy.ndimage
 import matplotlib.cm as cm
 import time
 
-### grab 2 1d vectors (lat/long) from hdf5 file
-
-f = h5py.File('columnar.hdf5', mode='r')
-ydata = f['latitude'][:6000000]
-xdata = f['longitude'][:6000000]
-selector = ~(np.isnan(xdata) | np.isnan(xdata) | (xdata == 0) | (xdata == 0))
-print ed - st
-
-xdata = xdata[selector]
-ydata = ydata[selector]
-
-##constants
-(xmin, xmax, ymin, ymax) = (-123.11392679999999,
-                            153.4532255,
-                            -54.801912100000003,
-                            64.9833)
-scales = np.array([1, 2, 4, 8, 16]).astype('float64')
-lxmin, lxmax, lymin, lymax = (-100., -70., -10., 0.)
-lxres = 600
-lyres = 400
-overlap = 3 #(in pixels)
-target_partitions = np.array([-123.1139268, -100.3898881,  -99.1809685,  -89.62     ,
-                              -75.6945583,  -74.61666  ,  -74.0758333,  -74.0758333,
-                              -73.120468 ,  -58.4583333])
 
 def nearest_scale(target, all_scales):
     if target > all_scales[-1]:
@@ -46,10 +22,6 @@ def compute_scales(lbounds, gbounds, all_scales):
     nearest_xscale = nearest_scale(xscale, all_scales)
     nearest_yscale = nearest_scale(yscale, all_scales)
     return (nearest_xscale, nearest_yscale)
-
-lbounds = (lxmin, lxmax, lymin, lymax)
-gbounds = (xmin, xmax, ymin, ymax)
-xscale, yscale = compute_scales(lbounds, gbounds, scales)
 
 
 def discrete_bounds(scales, lbounds, gbounds, lxres, lyres):
@@ -79,34 +51,32 @@ def discrete_bounds(scales, lbounds, gbounds, lxres, lyres):
     units = (xunit, yunit)
     return grid_shape, grid_data_bounds, local_indexes, units
 
-grid_shape, grid_data_bounds, local_indexes, units = discrete_bounds(
-    (xscale, yscale),
-    lbounds,
-    gbounds,
-    lxres, lyres)
 
 def compute_partitions(target_partitions, gbounds, grid_shape, overlap):
     xshape, yshape = grid_shape
     (gxmin, gxmax, gymin, gymax) = gbounds
-    xlimit = xmax - xmin
+    xlimit = gxmax - gxmin
     xslope = xlimit / (xshape - 1)
-    xunit, yunit = units
     chunks = []
     for idx in range(0, len(target_partitions) - 1):
         start = target_partitions[idx]
         end = target_partitions[idx + 1]
-        start_idx = round((start - xmin) / xslope)
-        end_idx = round((end - xmin) / xslope)
+        start_idx = round((start - gxmin) / xslope)
+        if start_idx < 0:
+            start_idx = 0
+        end_idx = round((end - gxmin) / xslope)
+        if end_idx >= (xshape - 1):
+            end_idx = (xshape - 1)
         start_idx_overlap = start_idx - overlap
         if start_idx_overlap < 0:
             start_idx_overlap = 0
         end_idx_overlap = end_idx + overlap
         if end_idx_overlap >= (xshape - 1):
             end_idx_overlap = (xshape - 1)
-        start_val_overlap = xmin + xslope * start_idx_overlap
-        end_val_overlap = xmin + xslope * end_idx_overlap
-        start_val = xmin + xslope * start_idx
-        end_val = xmin + xslope * end_idx
+        start_val_overlap = gxmin + xslope * start_idx_overlap
+        end_val_overlap = gxmin + xslope * end_idx_overlap
+        start_val = gxmin + xslope * start_idx
+        end_val = gxmin + xslope * end_idx
         chunk_info = (
             overlap,
             start_val, end_val,
@@ -126,7 +96,6 @@ def circle(radius=3):
     mask = np.sqrt(xx ** 2 +  yy **2) < radius
     return mask
 
-shape = circle()
 
 import numba
 import math
@@ -151,17 +120,29 @@ def project(xdata, ydata, grid, xmin, xmax, ymin, ymax):
         yrem = ycoord - ycoord_int
         xbase = 1 - xrem
         ybase = 1 - yrem
-        grid[xcoord_int, ycoord_int] += xbase * ybase
+
         xoffset = xcoord_int + 1
         yoffset = ycoord_int + 1
-        if xoffset < xshape:
-            grid[xoffset, ycoord_int] += xrem * ybase
-        if yoffset < yshape:
-            grid[xcoord_int, yoffset] += xbase * yrem
-        if yoffset < yshape and xoffset < xshape:
-            grid[xoffset, yoffset] += xrem * yrem
+        xx = xoffset
+        yy = yoffset
+        grid[xx, yy] +=  1
+        # if xx < xshape and xx > 0 and yy <yshape and yy>0:
+        #     grid[xx, yy] +=  xbase * ybase
+        # xx = xoffset
+        # yy = ycoord_int
+        # if xx < xshape and xx > 0 and yy <yshape and yy>0:
+        #     grid[xx, yy] +=  xrem * ybase
+        # xx = xcoord_int
+        # yy = yoffset
+        # if xx < xshape and xx > 0 and yy <yshape and yy>0:
+        #     grid[xx, yy] += xbase * yrem
+        # xx = xoffset
+        # yy = yoffset
+        # if xx < xshape and xx > 0 and yy <yshape and yy>0:
+        #     grid[xx, yy] += xrem * yrem
     return grid
 fast_project = numba.jit(project, nopython=True)
+#fast_project = project
 def render(xdata, ydata, grid, grid_data_bounds, shape):
     output = fast_project(xdata, ydata,
                           grid,
@@ -186,6 +167,20 @@ class XChunkedGrid(object):
                 bigdata[xx1 - xstart:xx2 - xstart, :] = data[xx1 - x1:xx2 - x1, :]
         return bigdata
 
+def render_chunk_ks(chunked, boolean_partition, chunk_spec, xfield, yfield):
+    pass
+def render_chunked_ks(chunked_data, boolean_partitions,
+                      chunk_specs,
+                      grid_data_bounds, grid_shape, mark,
+                      xfield, yfield
+):
+    (gxmin, gxmax, gymin, gymax) = grid_data_bounds
+    for boolean_partition, chunk_spec in zip(boolean_partitions, chunk_specs):
+        (overlap, start_val, end_val,
+         start_val_overlap, end_val_overlap,
+         start_idx, end_idx,
+         start_idx_overlap, end_idx_overlap) = chunk_spec
+        pass
 
 def render_chunked(xdata, ydata, chunks, grid_data_bounds, grid_shape, mark):
     (gxmin, gxmax, gymin, gymax) = gbounds
@@ -208,45 +203,79 @@ def render_chunked(xdata, ydata, chunks, grid_data_bounds, grid_shape, mark):
         data.append((start_idx, end_idx, output))
     return XChunkedGrid(data, grid_shape[-1])
 
-chunks = compute_partitions(target_partitions, gbounds, grid_shape, overlap)
-chunked = render_chunked(xdata, ydata, chunks, grid_data_bounds, grid_shape, circle(2))
-(lxdim1, lxdim2, lydim1, lydim2) = local_indexes
-output = chunked.get(0, grid_shape[0] - 1)
-output2 = chunked.get(lxdim1, lxdim2)[:, lydim1:lydim2]
-ed = time.time()
-print ed-st
+if __name__ == "__main__":
+    ### grab 2 1d vectors (lat/long) from hdf5 file
+    shape = circle()
+    f = h5py.File('columnar.hdf5', mode='r')
+    ydata = f['latitude'][:6000000]
+    xdata = f['longitude'][:6000000]
+    selector = ~(np.isnan(xdata) | np.isnan(xdata) | (xdata == 0) | (xdata == 0))
 
-### after projecting individual points, convolve a shape(circle/square/cross)
-### over the points
-import pylab
-pylab.imshow(output.T[::-1,:] ** 0.2,
-             cmap=cm.Greys_r,
-             extent=grid_data_bounds,
-             interpolation='nearest')
-pylab.figure()
-pylab.imshow(output2.T[::-1,:] ** 0.2,
-             cmap=cm.Greys_r,
-             extent=lbounds,
-             interpolation='nearest')
+    xdata = xdata[selector]
+    ydata = ydata[selector]
 
-#
-# st = time.time()
-# grid = np.zeros(grid_shape)
-# output = render(xdata, ydata, grid, grid_data_bounds, circle(2))
-# (lxdim1, lxdim2, lydim1, lydim2) = local_indexes
-# output2 = output[lxdim1:lxdim2, lydim1:lydim2]
-# ed = time.time()
-# print ed-st
+    ##constants
+    (xmin, xmax, ymin, ymax) = (-123.11392679999999,
+                                153.4532255,
+                                -54.801912100000003,
+                                64.9833)
+    scales = np.array([1, 2, 4, 8, 16]).astype('float64')
+    lxmin, lxmax, lymin, lymax = (-100., -70., -10., 0.)
+    lxres = 600
+    lyres = 400
+    overlap = 3 #(in pixels)
+    target_partitions = np.array([-123.1139268, -100.3898881,  -99.1809685,  -89.62     ,
+                                  -75.6945583,  -74.61666  ,  -74.0758333,  -74.0758333,
+                                  -73.120468 ,  -58.4583333])
 
-# ### after projecting individual points, convolve a shape(circle/square/cross)
-# ### over the points
-# import pylab
-# pylab.imshow(output.T[::-1,:] ** 0.2,
-#              cmap=cm.Greys_r,
-#              extent=grid_data_bounds,
-#              interpolation='nearest')
-# pylab.figure()
-# pylab.imshow(output2.T[::-1,:] ** 0.2,
-#              cmap=cm.Greys_r,
-#              extent=lbounds,
-#              interpolation='nearest')
+    lbounds = (lxmin, lxmax, lymin, lymax)
+    gbounds = (xmin, xmax, ymin, ymax)
+    xscale, yscale = compute_scales(lbounds, gbounds, scales)
+
+    grid_shape, grid_data_bounds, local_indexes, units = discrete_bounds(
+        (xscale, yscale),
+        lbounds,
+        gbounds,
+        lxres, lyres)
+
+
+    chunks = compute_partitions(target_partitions, gbounds, grid_shape, overlap)
+    chunked = render_chunked(xdata, ydata, chunks, grid_data_bounds, grid_shape, circle(2))
+    (lxdim1, lxdim2, lydim1, lydim2) = local_indexes
+    output = chunked.get(0, grid_shape[0] - 1)
+    output2 = chunked.get(lxdim1, lxdim2)[:, lydim1:lydim2]
+
+    ### after projecting individual points, convolve a shape(circle/square/cross)
+    ### over the points
+    import pylab
+    pylab.imshow(output.T[::-1,:] ** 0.2,
+                 cmap=cm.Greys_r,
+                 extent=grid_data_bounds,
+                 interpolation='nearest')
+    pylab.figure()
+    pylab.imshow(output2.T[::-1,:] ** 0.2,
+                 cmap=cm.Greys_r,
+                 extent=lbounds,
+                 interpolation='nearest')
+
+    #
+    # st = time.time()
+    # grid = np.zeros(grid_shape)
+    # output = render(xdata, ydata, grid, grid_data_bounds, circle(2))
+    # (lxdim1, lxdim2, lydim1, lydim2) = local_indexes
+    # output2 = output[lxdim1:lxdim2, lydim1:lydim2]
+    # ed = time.time()
+    # print ed-st
+
+    # ### after projecting individual points, convolve a shape(circle/square/cross)
+    # ### over the points
+    # import pylab
+    # pylab.imshow(output.T[::-1,:] ** 0.2,
+    #              cmap=cm.Greys_r,
+    #              extent=grid_data_bounds,
+    #              interpolation='nearest')
+    # pylab.figure()
+    # pylab.imshow(output2.T[::-1,:] ** 0.2,
+    #              cmap=cm.Greys_r,
+    #              extent=lbounds,
+    #              interpolation='nearest')

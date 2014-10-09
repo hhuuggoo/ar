@@ -12,7 +12,7 @@ setup_client('http://power:6323/')
 c = client(rpc_name='data', queue_name='data')
 
 def get_length(source):
-    f = h5py.File(source.local_path())
+    f = h5py.File(source.local_path(), 'r')
     cols = f.keys()
     return f[cols[0]].shape[0]
 
@@ -24,21 +24,29 @@ def chunks(length, target=500000.):
     return output
 
 def boolfilter(source, start, end, query_dict, prefilter=None):
+    """
+    if query_dict is present, we will load the dset into memory, and do the filtering
+    if query_dict is not present, we will resort to smart slicing
+
+    prefilter is a boolean vector
+    """
+
     if prefilter is None:
         boolvect = np.ones(end - start, dtype=np.bool)
     else:
         boolvect = prefilter.obj()
-    f = h5py.File(source.local_path())
+    f = h5py.File(source.local_path(), 'r')
+    print np.sum(boolvect)
     for field, operations in query_dict.items():
         ds = f[field]
         data = ds[start:end]
-        for operation, value in operations:
-            if operation == '>=':
-                boolvect = boolvect & (data >= value)
-            elif operation == '<=':
-                boolvect = boolvect & (data <= value)
-            elif operation == '==':
-                boolvect = boolvect & (data == value)
+        for op in operations:
+            val = op(data)
+            #print field, op.__name__
+            result = boolvect & val
+            boolvect = result
+            #print np.sum(val), np.sum(result), np.sum(boolvect)
+    print 'SUM', np.sum(boolvect)
     obj = do(boolvect)
     obj.save(prefix='index')
     return obj
@@ -62,17 +70,43 @@ def smartslice(ds, start, end, boolvect):
         offset = limit
     return data
 
-def kssmartslice(source, start, end, field,  boolobj, op=None):
-    f = h5py.File(source.local_path())
-    ds = f[field]
+def kssmartsliceapply(source, start, end, boolobj, ops=None):
+    """
+    an op is a func, and a list of fields
+    if ops is a list, apply each op to the chunk, and return a list of results
+    if it is a tuple, apply the op to the the chunk, return the chunk
+    """
+    single_return = False
+    if isinstance(ops, basestring):
+        #no op, which returns one field
+        single_return = True
+        ops = [(lambda x : x, op)]
+    if isinstance(ops, tuple):
+        single_return = True
+        ops = [ops]
+    f = h5py.File(source.local_path(), 'r')
     boolvect = boolobj.obj()
-    result = smartslice(ds, start, end, boolvect)
-    if op:
-        return op(result)
-    else:
-        obj = do(result)
-        obj.save('sliced')
-        return obj
+    if np.sum(boolvect) == 0:
+        results = [None for op in ops]
+    results = []
+    for op in ops:
+        fields = op[1:]
+        op = op[0]
+        data = []
+        for field in fields:
+            ds = f[field]
+            result = smartslice(ds, start, end, boolvect)
+            data.append(result)
+        try:
+            result = op(*data)
+        except Exception:
+            raise Exception(str((source, start, end)))
+        results.append(result)
+    if single_return:
+        results = results[0]
+    obj = do(results)
+    obj.save(prefix='sliced')
+    return obj
 
 class Chunked(object):
     def __init__(self, sources):
@@ -105,48 +139,89 @@ class Chunked(object):
 
     def query(self, query_dict, prefilter=None):
         c = client()
-        for source, start, end in self.chunks:
-            c.bc(boolfilter, source, start, end, query_dict)
+        if prefilter is None:
+            prefilter = [None for x in self.chunks]
+        for boolobj, (source, start, end) in zip(prefilter, self.chunks):
+            c.bc(boolfilter, source, start, end, query_dict, prefilter=boolobj)
         c.execute()
         return c.br()
 
-    def smartslice(self, field, slices, op=None):
+    def smartsliceapply(self, slices, ops=None):
         c = client()
-        for boolvect, (source, start, end) in zip(slices, self.chunks):
-            c.bc(kssmartslice, source, start, end, field, boolvect, op=op)
+        for boolobj, (source, start, end) in zip(slices, self.chunks):
+            c.bc(kssmartsliceapply, source, start, end, boolobj, ops=ops)
         c.execute()
         return c.br()
 
 if __name__ == "__main__":
-    objs = [du(x) for x in c.path_search('taxi/*hdf5')]
-    chunked = Chunked(objs)
-    chunked.chunks
+    pass
+    # objs = [du(x) for x in c.path_search('taxi/*hdf5')]
+    # chunked = Chunked(objs)
+    # chunked.chunks
+    # def clean_lat(x):
+    #     return (x != 0) & ~np.isnan(x) & (x >= 39.) & (x <= 46.)
+    # def clean_long(x):
+    #     return (x != 0) & ~np.isnan(x) & (x <= -70.) & (x >= -80.)
+    # query = chunked.query({'pickup_latitude' : [clean_lat],
+    #                        'pickup_longitude' : [clean_long],
+    #                        'dropoff_latitude' : [clean_lat],
+    #                        'dropoff_longitude' : [clean_long],
+    #                    })
+    # def helper(lat1, lat2, long1, long2):
+    #     bounds = (lat1.max(), lat2.max(), lat1.min(), lat2.min(),
+    #               long1.max(), long2.max(), long1.min(), long2.min())
 
-    st = time.time()
-    query = chunked.query({'trip_time_in_secs' : [('>=', 1000),
-                                                  ('<=', 2000)]})
-    def helper(arr):
-        return len(arr)
-    retval = chunked.smartslice('trip_time_in_secs', query, op=helper)
-    print sum(retval)
-    ed = time.time()
-    print ed-st
+    #     return bounds
+    # retval = chunked.smartsliceapply(
+    #     query,
+    #     ops = (helper, 'pickup_latitude',
+    #            'dropoff_latitude',
+    #            'pickup_longitude',
+    #            'dropoff_longitude',
+    #            ))
+    # retval = [x.obj() for x in retval]
+    # def helper(long1, long2):
+    #     return (np.percentile(long1, np.arange(0, 100, 10)),
+    #             np.percentile(long2, np.arange(0, 100, 10)))
+    # retval = chunked.smartsliceapply(
+    #     query,
+    #     ops = (helper, 'pickup_longitude', 'dropoff_longitude')
+    # )
+    # retval = [x.obj() for x in retval]
+    # data = []
+    # for percentile1, percentile2 in retval:
+    #     data.append(percentile1)
+    #     data.append(percentile2)
+    # data = np.vstack(data)
+    # data.mean(axis=0)
+    # st = time.time()
+    # query = chunked.query({'trip_time_in_secs' : [('>=', 1000),
+    #                                               ('<=', 2000)]
 
-    st = time.time()
-    c = client()
-    def helper(obj, start, end):
-        f = h5py.File(obj.local_path())
-        ds = f['pickup_latitude']
-        data = ds[start:end]
-        min = np.min(data)
-        max = np.max(data)
-        return min, max
-    for source, start, end in chunked.chunks:
-        c.bc(helper, source, start, end)
-    c.execute()
-    results = c.br()
-    minval = min([x[0] for x in results])
-    maxval = max([x[1] for x in results])
-    print minval, maxval
-    ed = time.time()
-    print ed - st
+    #                    })
+    # def helper(x, y):
+    #     return x - y
+    # retval = chunked.smartsliceapply(query,
+    #                                  ops=(helper, 'pickup_latitude', 'pickup_longitude'))
+    # print retval
+    # ed = time.time()
+    # print ed-st
+
+    # st = time.time()
+    # c = client()
+    # def helper(obj, start, end):
+    #     f = h5py.File(obj.local_path())
+    #     ds = f['pickup_latitude']
+    #     data = ds[start:end]
+    #     min = np.min(data)
+    #     max = np.max(data)
+    #     return min, max
+    # for source, start, end in chunked.chunks:
+    #     c.bc(helper, source, start, end)
+    # c.execute()
+    # results = c.br()
+    # minval = min([x[0] for x in results])
+    # maxval = max([x[1] for x in results])
+    # print minval, maxval
+    # ed = time.time()
+    # print ed - st
