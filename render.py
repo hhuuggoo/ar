@@ -10,37 +10,21 @@ import time
 ### grab 2 1d vectors (lat/long) from hdf5 file
 
 f = h5py.File('columnar.hdf5', mode='r')
-st = time.time()
 ydata = f['latitude'][:6000000]
 xdata = f['longitude'][:6000000]
-ed = time.time()
 selector = ~(np.isnan(xdata) | np.isnan(xdata) | (xdata == 0) | (xdata == 0))
 print ed - st
-### remove nans/zeros
 
 xdata = xdata[selector]
 ydata = ydata[selector]
 
-
-### some dumb code that computes data bounds
-### and the size of the global canvas, assuming
-### we are zoomed in to lxmin/lxmax lymin/lymax
-
-def bounds(xdata, ydata):
-    longs = xdata
-    xmin = longs.min()
-    xmax = longs.max()
-
-    lats = ydata
-    ymin = lats.min()
-    ymax = lats.max()
-    return (xmin, xmax, ymin, ymax)
-
 ##constants
-xmin, xmax, ymin, ymax = bounds(xdata, ydata)
+(xmin, xmax, ymin, ymax) = (-123.11392679999999,
+                            153.4532255,
+                            -54.801912100000003,
+                            64.9833)
 scales = np.array([1, 2, 4, 8, 16]).astype('float64')
-lxmin, lxmax, lymin, lymax = (-123., -70., -10., 50.)
-#lxmin, lxmax, lymin, lymax = xmin, xmax, ymin, ymax
+lxmin, lxmax, lymin, lymax = (-100., -70., -10., 0.)
 lxres = 600
 lyres = 400
 overlap = 3 #(in pixels)
