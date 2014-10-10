@@ -10,19 +10,25 @@ from bokeh.plotting import image
 class AjaxDataSource(ServerDataSource):
     url = String()
 
+class ARDataSource(ServerDataSource):
+    url = String()
+
 class TaxiApp(VBox):
     extra_generated_classes = [["TaxiApp", "TaxiApp", "VBox"]]
-    extra_scripts = ['/bokehjs/static/app/src/js/ajax_data_source.js']
-    extra_js=['window.ajax_data_source.main();']
+    extra_scripts = ['/bokehjs/static/app/src/js/ar_data_source.js']
+    extra_js=['window.ar_data_source.main();']
     pickup_plot = Instance(Plot)
     dropoff_plot = Instance(Plot)
+    gbounds = (-74.19, -73.7, 40.5, 40.99)
     @classmethod
     def create(cls):
+        gbounds = (-74.19, -73.7, 40.5, 40.99)
+        xmin, xmax, ymin, ymax = gbounds
         app = cls()
-        data = AjaxDataSource(
+        data = ARDataSource(
             data_url="/bokeh/taxidata/pickup/",
             data=dict(
-                x=[1], y=[2], dw=[10], dh=[10], palette=["Reds-9"]
+                x=[0], y=[0], dw=[xmax-xmin], dh=[ymax-ymin], palette=["Greys-256"]
             )
         )
         plot = image(source=data,
@@ -32,29 +38,29 @@ class TaxiApp(VBox):
                      dw="dw",
                      dh="dh",
                      plot_width=600,
-                     plot_height=400,
+                     plot_height=600,
                      palette='palette',
-                     x_range=[1, 11], y_range=[2, 11],
+                     x_range=[xmin, xmax], y_range=[ymin, ymax],
                      tools="pan,wheel_zoom,box_zoom,reset,previewsave",
                      title='pickup'
         )
         app.pickup_plot = plot
-        data = AjaxDataSource(
+        data = ARDataSource(
             data_url="/bokeh/taxidata/dropoff/",
             data=dict(
-                x=[1], y=[2], dw=[10], dh=[10], palette=["Reds-9"]
+                x=[0], y=[0], dw=[xmax-xmin], dh=[ymax-ymin], palette=["Greys-256"]
             )
         )
         plot = image(source=data,
                      image="image",
                      plot_width=600,
-                     plot_height=400,
+                     plot_height=600,
                      x="x",
                      y="y",
                      dw="dw",
                      dh="dh",
                      palette='palette',
-                     x_range=[1, 11], y_range=[2, 11],
+                     x_range=[xmin, xmax], y_range=[ymin, ymax],
                      tools="pan,wheel_zoom,box_zoom,reset,previewsave",
                      title='dropoff'
         )

@@ -16,11 +16,6 @@ from render import (compute_partitions, discrete_bounds, compute_scales, circle)
 setup_client('http://power:6323/')
 
 
-def clean_lat(x):
-    return (x != 0) & ~np.isnan(x) & (x >= 40.5) & (x <= 41.)
-
-def clean_long(x):
-    return (x != 0) & ~np.isnan(x) & (x >= -74.2) & (x <= -73.7032)
 
 def _h5py_append(src, dst, start, end, boolvect):
     print src, dst
@@ -54,13 +49,13 @@ def h5py_append(dst_path, chunks, boolobjs):
 
 class ARDataset(object):
     overlap = 3
-    lxres = 800
-    lyres = 400
-    target_partitions = np.array([-74.191536, -74.001808, -73.994064,
+    lxres = 600
+    lyres = 600
+    target_partitions = np.array([-74.05, -74.001808, -73.994064,
                                   -73.981331, -73.976891, -73.971153,
                                   -73.962082, -73.7 ])
-    scales = np.array([1, 2, 4, 8, 16]).astype('float64')
-    gbounds = (-74.19, -73.7, 40.5, 40.99)
+    scales = np.array([1, 2, 4, 8, 16, 32, 64]).astype('float64')
+    gbounds = (-74.05, -73.75, 40.5, 40.99)
     cache = {}
 
     def __init__(self):
@@ -69,6 +64,12 @@ class ARDataset(object):
         self._partitions = None
         self._partition_indices = None
         self.mark = circle(radius=1.0)
+
+    def clean_lat(self, x):
+        return (x >= self.gbounds[2]) & (x <= self.gbounds[3])
+
+    def clean_long(self, x):
+        return (x >= self.gbounds[0]) & (x <= -self.gbounds[1])
 
     def partitions(self):
         c = client()
@@ -158,10 +159,10 @@ class ARDataset(object):
             self._cleaned = du('taxi/cleaned').obj()
             return self._cleaned
         chunked = self.chunked()
-        cleaned = chunked.query({'pickup_latitude' : [clean_lat],
-                                 'pickup_longitude' : [clean_long],
-                                 'dropoff_latitude' : [clean_lat],
-                                 'dropoff_longitude' : [clean_long],
+        cleaned = chunked.query({'pickup_latitude' : [self.clean_lat],
+                                 'pickup_longitude' : [self.clean_long],
+                                 'dropoff_latitude' : [self.clean_lat],
+                                 'dropoff_longitude' : [self.clean_long],
                              })
         self._cleaned = cleaned
         do(self._cleaned).save(url='taxi/cleaned')
@@ -185,6 +186,7 @@ class ARDataset(object):
         c = client()
         xscale, yscale = compute_scales(local_bounds, self.gbounds,
                                         self.scales)
+        print ('SCALES', xscale, yscale)
         grid_shape, grid_data_bounds, local_indexes, units = discrete_bounds(
             (xscale, yscale),
             local_bounds,
@@ -268,7 +270,7 @@ def render(chunks, partition_spec, filters,
     f.create_dataset('data', data=grid, compression='lzf')
     f.close()
     obj = dp(path)
-    obj.save(prefix="projection")
+    obj.save(prefix="taxi/raw/projection")
     return start_idx, end_idx, obj
 
 class KSXChunkedGrid(object):
