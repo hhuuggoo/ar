@@ -10,7 +10,7 @@ import scipy.ndimage
 import cStringIO as StringIO
 from kitchensink import setup_client, client, do, du, dp
 from kitchensink import settings
-from search import Chunked, smartslice
+from search import Chunked, smartslice, boolfilter
 from render import (compute_partitions, discrete_bounds, compute_scales, circle)
 setup_client('http://power:6323/')
 
@@ -166,7 +166,21 @@ class ARDataset(object):
         do(self._cleaned).save(url='taxi/cleaned')
         return self._cleaned
 
-    def project(self, local_bounds, filters={}):
+    def query(self, query_dict):
+        c = client()
+        chunked = Chunked(self.partitions())
+        for source, start, end in chunked.chunks:
+            c.bc(boolfilter, source, start, end, query_dict)
+        c.execute()
+        results = c.br()
+        output = {}
+        for result, (source, start, end) in zip(results, chunked.chunks):
+            output[(source.data_url, start, end)] = result
+        output = do(output)
+        output.save(prefix='taxi/query')
+        return output
+
+    def project(self, local_bounds, filters=None):
         c = client()
         xscale, yscale = compute_scales(local_bounds, self.gbounds,
                                         self.scales)
@@ -177,7 +191,12 @@ class ARDataset(object):
             self.lxres,
             self.lyres
         )
-        url = "taxi/projections/%s/%s" % grid_shape
+        if filters:
+            t = (filters.data_url, grid_shape[0], grid_shape[1])
+            url = "taxi/projections/%s/%s/%s" % t
+        else:
+            url = "taxi/projections/%s/%s" % grid_shape
+        filters = filters.obj()
         if url in self.cache:
             return local_indexes, self.cache[url]
         if c.path_search(url):
@@ -279,10 +298,11 @@ if __name__ == "__main__":
     import matplotlib.cm as cm
     st = time.time()
     ds = ARDataset()
+    filters = ds.query({'trip_time_in_secs' : [lambda x : (x >= 1999) & (x <= 2000)]})
     global_bounds = (-74.19, -73.7, 40.5, 40.999)
     local_bounds = (-74.0, -73.9, 40.7, 40.8)
     #local_bounds = global_bounds
-    local_indexes, (grid_shape, results) = ds.project(local_bounds)
+    local_indexes, (grid_shape, results) = ds.project(local_bounds, filters)
     lxdim1, lxdim2, lydim1, lydim2 = local_indexes
     ed = time.time()
     print ed-st
