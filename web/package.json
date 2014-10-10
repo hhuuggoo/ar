@@ -1,0 +1,12 @@
+{
+  "name": "arapp",
+  "version": "0.6.1",
+  "dependencies": {
+    "grunt": "*",
+    "grunt-cli": "*",
+    "grunt-contrib-coffee": "*",
+    "grunt-contrib-watch": "*",
+    "grunt-contrib-clean": "*",
+    "grunt-eco": "*"
+  }
+}

@@ -4,6 +4,7 @@ from os.path import relpath, join, basename, exists, dirname
 import time
 
 import numpy as np
+import tempfile
 import h5py
 import pandas as pd
 import scipy.ndimage
@@ -56,7 +57,6 @@ class ARDataset(object):
     lxres = 800
     lyres = 400
     target_partitions = np.array([-74.191536, -74.001808, -73.994064,
-                                  -73.989662, -73.985313,
                                   -73.981331, -73.976891, -73.971153,
                                   -73.962082, -73.7 ])
     scales = np.array([1, 2, 4, 8, 16]).astype('float64')
@@ -68,7 +68,7 @@ class ARDataset(object):
         self._chunked = None
         self._partitions = None
         self._partition_indices = None
-        self.mark = circle()
+        self.mark = circle(radius=1.0)
 
     def partitions(self):
         c = client()
@@ -96,8 +96,9 @@ class ARDataset(object):
                  data_type='file', _queue_name='data|power', _rpc_name='data')
         c.execute()
         c.br()
-        self._partitions = do([du(x) for x in paths])
-        self._partitions.save(url=url)
+        obj = do([du(x) for x in paths])
+        obj.save(url=url)
+        self._partitions = obj.obj()
         return self._partitions
 
     def partition_indices(self):
@@ -180,7 +181,7 @@ class ARDataset(object):
         output.save(prefix='taxi/query')
         return output
 
-    def project(self, local_bounds, filters=None):
+    def project(self, local_bounds, xfield, yfield, filters=None):
         c = client()
         xscale, yscale = compute_scales(local_bounds, self.gbounds,
                                         self.scales)
@@ -192,11 +193,15 @@ class ARDataset(object):
             self.lyres
         )
         if filters:
-            t = (filters.data_url, grid_shape[0], grid_shape[1])
-            url = "taxi/projections/%s/%s/%s" % t
+            t = (filters.data_url, xfield, yfield, grid_shape[0], grid_shape[1])
+            url = "taxi/projections/%s/%s/%s/%s/%s" % t
         else:
-            url = "taxi/projections/%s/%s" % grid_shape
-        filters = filters.obj()
+            t = (xfield, yfield, grid_shape[0], grid_shape[1])
+            url = "taxi/projections/%s/%s/%s/%s" % t
+        if filters is not None:
+            filters = filters.obj()
+        else:
+            filters = {}
         if url in self.cache:
             return local_indexes, self.cache[url]
         if c.path_search(url):
@@ -258,7 +263,11 @@ def render(chunks, partition_spec, filters,
     ed = end_idx - start_idx_overlap
     grid = grid[st:ed, :]
     print np.max(grid)
-    obj = do(grid)
+    path = tempfile.NamedTemporaryFile().name
+    f = h5py.File(path)
+    f.create_dataset('data', data=grid, compression='lzf')
+    f.close()
+    obj = dp(path)
     obj.save(prefix="projection")
     return start_idx, end_idx, obj
 
@@ -269,15 +278,14 @@ class KSXChunkedGrid(object):
         self.data = data
         self.yshape = yshape
 
-    def get(self, xstart, xend):
+    def get(self, xstart, xend, ystart, yend):
         c = client()
-        bigdata = np.zeros(((xend - xstart), self.yshape))
+        bigdata = np.zeros((int(xend - xstart), int(yend-ystart)))
         xsize = xend - xstart
         assignments = []
         def helper(data, x1, xx1, xx2):
-            data = data.obj()
-            return data[xx1-x1:xx2-x1, :]
-
+            data = h5py.File(data.local_path())['data']
+            return data[int(xx1-x1):int(xx2-x1), int(ystart):int(yend)]
         for x1, x2, data in self.data:
             xx1 = max(x1, xstart)
             xx2 = min(x2, xend)
@@ -286,19 +294,22 @@ class KSXChunkedGrid(object):
                 c.bc(helper, data, x1, xx1, xx2)
         c.execute()
         results = c.br()
+        print assignments
         for assignment, output in zip(assignments, results):
             bigdata[assignment[0]:assignment[1], :] = output
         return bigdata
 
 
 if __name__ == "__main__":
+    #client().reducetree('taxi/partitioned*')
     #client().reducetree('taxi/cleaned*')
     #client().reducetree('taxi/index*')
-    #client().reducetree('taxi/projections*')
+    client().reducetree('taxi/projections*')
     import matplotlib.cm as cm
     st = time.time()
     ds = ARDataset()
-    filters = ds.query({'trip_time_in_secs' : [lambda x : (x >= 1999) & (x <= 2000)]})
+    #filters = ds.query({'trip_time_in_secs' : [lambda x : (x >= 1999) & (x <= 2000)]})
+    filters = None
     global_bounds = (-74.19, -73.7, 40.5, 40.999)
     local_bounds = (-74.0, -73.9, 40.7, 40.8)
     #local_bounds = global_bounds
@@ -314,7 +325,10 @@ if __name__ == "__main__":
     #              extent=global_bounds,
     #              interpolation='nearest')
     # pylab.figure()
-    output2 = grid.get(lxdim1, lxdim2)[:, lydim1:lydim2]
+    st = time.time()
+    output2 = grid.get(lxdim1, lxdim2, lydim1, lydim2)
+    ed = time.time()
+    print ed - st
     pylab.imshow(output2.T[::-1,:] ** 0.3,
                  cmap=cm.Greys_r,
                  extent=local_bounds,
