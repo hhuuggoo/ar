@@ -51,7 +51,9 @@ def boolfilter(source, start, end, query_dict, prefilter=None):
     obj.save(prefix='index')
     return obj
 
-def smartslice(ds, start, end, boolvect):
+def smartslice(ds, start, end, boolvect=None):
+    if boolvect is None:
+        return ds[start:end]
     data = np.empty(np.sum(boolvect), ds.dtype)
     chunksize = ds.chunks[0]
     data_offset = 0

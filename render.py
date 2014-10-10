@@ -125,21 +125,20 @@ def project(xdata, ydata, grid, xmin, xmax, ymin, ymax):
         yoffset = ycoord_int + 1
         xx = xoffset
         yy = yoffset
-        grid[xx, yy] +=  1
-        # if xx < xshape and xx > 0 and yy <yshape and yy>0:
-        #     grid[xx, yy] +=  xbase * ybase
-        # xx = xoffset
-        # yy = ycoord_int
-        # if xx < xshape and xx > 0 and yy <yshape and yy>0:
-        #     grid[xx, yy] +=  xrem * ybase
-        # xx = xcoord_int
-        # yy = yoffset
-        # if xx < xshape and xx > 0 and yy <yshape and yy>0:
-        #     grid[xx, yy] += xbase * yrem
-        # xx = xoffset
-        # yy = yoffset
-        # if xx < xshape and xx > 0 and yy <yshape and yy>0:
-        #     grid[xx, yy] += xrem * yrem
+        if xx < xshape and xx > 0 and yy <yshape and yy>0:
+            grid[xx, yy] +=  xbase * ybase
+        xx = xoffset
+        yy = ycoord_int
+        if xx < xshape and xx > 0 and yy <yshape and yy>0:
+            grid[xx, yy] +=  xrem * ybase
+        xx = xcoord_int
+        yy = yoffset
+        if xx < xshape and xx > 0 and yy <yshape and yy>0:
+            grid[xx, yy] += xbase * yrem
+        xx = xoffset
+        yy = yoffset
+        if xx < xshape and xx > 0 and yy <yshape and yy>0:
+            grid[xx, yy] += xrem * yrem
     return grid
 fast_project = numba.jit(project, nopython=True)
 #fast_project = project

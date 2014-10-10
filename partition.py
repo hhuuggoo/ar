@@ -1,6 +1,6 @@
 import os
 import math
-from os.path import relpath, join, basename, exists
+from os.path import relpath, join, basename, exists, dirname
 import time
 
 import numpy as np
@@ -9,7 +9,7 @@ import pandas as pd
 import scipy.ndimage
 import cStringIO as StringIO
 from kitchensink import setup_client, client, do, du, dp
-
+from kitchensink import settings
 from search import Chunked, smartslice
 from render import (compute_partitions, discrete_bounds, compute_scales, circle)
 setup_client('http://power:6323/')
@@ -20,6 +20,36 @@ def clean_lat(x):
 
 def clean_long(x):
     return (x != 0) & ~np.isnan(x) & (x >= -74.2) & (x <= -73.7032)
+
+def _h5py_append(src, dst, start, end, boolvect):
+    print src, dst
+    if not exists(dirname(dst)):
+        os.makedirs(dirname(dst))
+    src_file = h5py.File(src, 'r')
+    dst_file = h5py.File(dst, 'a')
+    try:
+        for k in src_file.keys():
+            print (dst, k)
+            data = smartslice(src_file[k], start, end, boolvect)
+            if len(data) == 0:
+                continue
+            if k not in dst_file.keys():
+                dst_file.create_dataset(
+                    k, data=data, maxshape=(None,), compression='lzf'
+                )
+            else:
+                ds = dst_file[k]
+                orig = ds.shape[0]
+                ds.resize((orig + len(data),))
+                ds[orig:] = data
+    finally:
+        src_file.close()
+        dst_file.close()
+
+def h5py_append(dst_path, chunks, boolobjs):
+    for boolobj, (source, start, end) in zip(boolobjs, chunks):
+        src_path = source.local_path()
+        _h5py_append(src_path, dst_path, start, end, boolobj.obj())
 
 class ARDataset(object):
     overlap = 3
@@ -33,25 +63,13 @@ class ARDataset(object):
     gbounds = (-74.19, -73.7, 40.5, 40.99)
     cache = {}
 
-    def __init__(self, local_bounds):
-        self.lbounds = local_bounds
-        xscale, yscale = compute_scales(self.lbounds, self.gbounds,
-                                        self.scales)
-        self.xscale, self.yscale = xscale, yscale
-        grid_shape, grid_data_bounds, local_indexes, units = discrete_bounds(
-            (xscale, yscale),
-            self.lbounds,
-            self.gbounds,
-            self.lxres,
-            self.lyres
-        )
-        self.grid_shape = grid_shape
-        self.grid_data_bounds = grid_data_bounds
-        self.local_indexes = local_indexes
+    def __init__(self):
         self._cleaned = None
         self._chunked = None
         self._partitions = None
+        self._partition_indices = None
         self.mark = circle()
+
     def partitions(self):
         c = client()
         url = 'taxi/partitioned/sources'
@@ -60,6 +78,27 @@ class ARDataset(object):
         if c.path_search(url):
             self._partitions = du(url).obj()
             return self._partitions
+        chunked = self.chunked()
+        paths = []
+        for idx, (partition_spec, partitioned_data) in \
+            enumerate(self.partition_indices()):
+
+            boolean_objs = partitioned_data
+            chunks = chunked.chunks
+            #HACK
+            dst_path = join("/data", 'taxi', 'partitioned', str(idx))
+            paths.append(join('taxi', 'partitioned', str(idx)))
+            c.bc(h5py_append, dst_path, chunks, boolean_objs)
+        c.execute()
+        c.br()
+        for p in paths:
+            c.bc('bootstrap', p,
+                 data_type='file', _queue_name='data|power', _rpc_name='data')
+        c.execute()
+        c.br()
+        self._partitions = do([du(x) for x in paths])
+        self._partitions.save(url=url)
+        return self._partitions
 
     def partition_indices(self):
         c = client()
@@ -76,7 +115,7 @@ class ARDataset(object):
         chunked = self.chunked()
         partitions = compute_partitions(self.target_partitions,
                                         self.gbounds,
-                                        grid_shape,
+                                        partition_grid_shape,
                                         self.overlap)
         partitioned_data = []
         for p in partitions:
@@ -127,19 +166,44 @@ class ARDataset(object):
         do(self._cleaned).save(url='taxi/cleaned')
         return self._cleaned
 
-    def project(self):
+    def project(self, local_bounds, filters={}):
         c = client()
-        for partition_spec, partitioned_data in self.partitions():
-            c.bc(render, self.chunked().chunks, partition_spec, partitioned_data,
-                 self.gbounds, self.grid_shape, self.mark,
+        xscale, yscale = compute_scales(local_bounds, self.gbounds,
+                                        self.scales)
+        grid_shape, grid_data_bounds, local_indexes, units = discrete_bounds(
+            (xscale, yscale),
+            local_bounds,
+            self.gbounds,
+            self.lxres,
+            self.lyres
+        )
+        url = "taxi/projections/%s/%s" % grid_shape
+        if url in self.cache:
+            return local_indexes, self.cache[url]
+        if c.path_search(url):
+            return local_indexes, du(url).obj()
+        c = client()
+        # these should matche the data partitions, except
+        # the actual overlap may be reduced due to different
+        # zoom level
+        partition_specs = compute_partitions(self.target_partitions,
+                                             self.gbounds,
+                                             grid_shape,
+                                             self.overlap)
+        print 'PROJECTIONG'
+        for partition_info, partition in zip(partition_specs, self.partitions()):
+            chunked = Chunked([partition])
+            c.bc(render, chunked.chunks, partition_info, filters, self.gbounds,
+                 grid_shape, self.mark,
                  'pickup_longitude', 'pickup_latitude')
-            # c.execute()
-            # c.br()
         c.execute()
         results = c.br()
-        return results
+        print 'DONE PROJECTIONG'
+        self.cache[url] = grid_shape, results
+        do(self.cache[url]).save(url)
+        return local_indexes, self.cache[url]
 
-def render(chunks, partition_spec, boolean_objs,
+def render(chunks, partition_spec, filters,
            grid_data_bounds, grid_shape, mark, xfield, yfield,
        ):
     from render import fast_project
@@ -152,8 +216,13 @@ def render(chunks, partition_spec, boolean_objs,
     ydatas = []
     grid = np.zeros((end_idx_overlap - start_idx_overlap, grid_shape[1]))
     bounds = (start_val_overlap, end_val_overlap, gymin, gymax)
-    for boolean_obj, (source, start, end) in zip(boolean_objs, chunks):
-        bvector = boolean_obj.obj()
+    for source, start, end in chunks:
+        boolean_obj = filters.get((source.data_url, start, end))
+        if boolean_obj is not None:
+            bvector = boolean_obj.obj()
+        else:
+            bvector = None
+        print source.data_url, start, end, bvector
         path = source.local_path()
         f = h5py.File(path, 'r')
         try:
@@ -163,13 +232,13 @@ def render(chunks, partition_spec, boolean_objs,
             ydata = smartslice(ds, start, end, bvector)
         finally:
             f.close()
-        print xdata.shape, ydata.shape, path
+        print xdata.shape, ydata.shape, grid.shape, path, bounds
         fast_project(xdata, ydata, grid, *bounds)
-    scipy.ndimage.convolve(grid, mark)
-    print np.max(grid)
+    grid = scipy.ndimage.convolve(grid, mark)
     st = start_idx - start_idx_overlap
     ed = end_idx - start_idx_overlap
     grid = grid[st:ed, :]
+    print np.max(grid)
     obj = do(grid)
     obj.save(prefix="projection")
     return start_idx, end_idx, obj
@@ -206,24 +275,28 @@ class KSXChunkedGrid(object):
 if __name__ == "__main__":
     #client().reducetree('taxi/cleaned*')
     #client().reducetree('taxi/index*')
+    #client().reducetree('taxi/projections*')
     import matplotlib.cm as cm
     st = time.time()
-    ds = ARDataset((-74.19, -73.7, 40.5, 40.999))
-    result = ds.partitions()
-    result = ds.project()
-    grid = KSXChunkedGrid(result, ds.grid_shape[-1])
-    output = grid.get(0, ds.grid_shape[0] - 1)
-    lxdim1, lxdim2, lydim1, lydim2 = ds.local_indexes
-    output2 = grid.get(lxdim1, lxdim2)[:, lydim1:lydim2]
+    ds = ARDataset()
+    global_bounds = (-74.19, -73.7, 40.5, 40.999)
+    local_bounds = (-74.0, -73.9, 40.7, 40.8)
+    #local_bounds = global_bounds
+    local_indexes, (grid_shape, results) = ds.project(local_bounds)
+    lxdim1, lxdim2, lydim1, lydim2 = local_indexes
     ed = time.time()
+    print ed-st
     import pylab
-    pylab.imshow(output.T[::-1,:] ** 0.3,
-                 cmap=cm.Greys_r,
-                 #extent=ds.grid_data_bounds,
-                 interpolation='nearest')
-    pylab.figure()
+    grid = KSXChunkedGrid(results, grid_shape[-1])
+    # output = grid.get(0, grid_shape[0] - 1)
+    # pylab.imshow(output.T[::-1,:] ** 0.3,
+    #              cmap=cm.Greys_r,
+    #              extent=global_bounds,
+    #              interpolation='nearest')
+    # pylab.figure()
+    output2 = grid.get(lxdim1, lxdim2)[:, lydim1:lydim2]
     pylab.imshow(output2.T[::-1,:] ** 0.3,
                  cmap=cm.Greys_r,
-                 #extent=ds.lbounds,
+                 extent=local_bounds,
                  interpolation='nearest')
     pylab.show()
