@@ -55,13 +55,17 @@ class ARDataset(object):
     lxres = 600
     lyres = 600
     gbounds = (-74.05, -73.75, 40.5, 40.99)
-    target_partitions = np.array([-74.05      , -74.0050965 , -73.996395  , -73.99487937,
+    target_partitions = np.array([-74.05, -74.03503217, -74.02006433, -74.0050965 , 
+                                  -73.996395  , -73.99487937,
                                   -73.9911765 , -73.98567113, -73.98415025, -73.9816325 ,
                                   -73.979851  , -73.97865187, -73.977682  , -73.97634288,
                                   -73.975685  , -73.97375225, -73.97268075, -73.97010162,
                                   -73.969421  , -73.96765362, -73.96539125, -73.96124612,
-                                  -73.956768  , -73.95199587, -73.9332795 , -73.88745962,
-                                  -73.84163975, -73.79581988, -73.75      ])
+                                  -73.956768  , -73.95199587, -73.9332795 , -73.92018811,
+                                  -73.90709671, -73.89400532,
+                                  -73.88091393, -73.86782254, -73.85473114, -73.84163975,
+                                  -73.82854836, -73.81545696, -73.80236557, -73.78927418,
+                                  -73.77618279, -73.76309139, -73.75      ])
     scales = np.array([1, 2, 4, 8, 16, 32, 64, 128]).astype('float64')
     cache = {}
 
@@ -223,6 +227,7 @@ class ARDataset(object):
                                              self.gbounds,
                                              grid_shape,
                                              self.overlap)
+        st = time.time()
         print 'PROJECTIONG'
         for partition_info, partition in zip(partition_specs, self.partitions()):
             chunked = Chunked([partition])
@@ -231,15 +236,16 @@ class ARDataset(object):
                  'pickup_longitude', 'pickup_latitude')
         c.execute()
         results = c.br()
-        print 'DONE PROJECTIONG'
+        ed = time.time()
+        print 'DONE PROJECTIONG', ed-st
         self.cache[url] = grid_shape, results
         do(self.cache[url]).save(url)
         return local_indexes, self.cache[url]
-
+        
+from fast_project import project as fast_project
 def render(chunks, partition_spec, filters,
            grid_data_bounds, grid_shape, mark, xfield, yfield,
        ):
-    from render import fast_project
     (overlap, start_val, end_val,
      start_val_overlap, end_val_overlap,
      start_idx, end_idx,
@@ -250,6 +256,7 @@ def render(chunks, partition_spec, filters,
     grid = np.zeros((end_idx_overlap - start_idx_overlap, grid_shape[1]))
     bounds = (start_val_overlap, end_val_overlap, gymin, gymax)
     for source, start, end in chunks:
+        st = time.time()
         boolean_obj = filters.get((source.data_url, start, end))
         if boolean_obj is not None:
             bvector = boolean_obj.obj()
@@ -264,8 +271,11 @@ def render(chunks, partition_spec, filters,
             ydata = smartslice(ds, start, end, bvector)
         finally:
             f.close()
+        mark = mark.astype('float64')
         args = (xdata, ydata, grid) + bounds + (mark,)
-        st = time.time()
+        md = time.time()
+        print 'DATA EXTRACT', md -st
+        print 'SHAPE', xdata.shape, ydata.shape, grid.shape, mark.shape
         fast_project(*args)
         ed = time.time()
         print 'fast_project', grid.shape, source.data_url, xdata.shape, ydata.shape, ed-st
@@ -273,14 +283,15 @@ def render(chunks, partition_spec, filters,
     st = start_idx - start_idx_overlap
     ed = end_idx - start_idx_overlap
     grid = grid[st:ed, :]
+    st = time.time()
     path = tempfile.NamedTemporaryFile().name
     f = h5py.File(path)
     f.create_dataset('data', data=grid, compression='lzf')
     f.close()
     obj = dp(path)
-    print ('DONE PROJECTING', source.local_path(), dt.datetime.now().isoformat())    
     obj.save(prefix="taxi/raw/projection")
-    print ('DONE saving', path, dt.datetime.now().isoformat())
+    ed = time.time()
+    print ('DONE saving', source.local_path(), ed-st)
     return start_idx, end_idx, obj
 
 class KSXChunkedGrid(object):
@@ -314,9 +325,9 @@ class KSXChunkedGrid(object):
 
 if __name__ == "__main__":
     setup_client('http://power:6323/')
-    #client().reducetree('taxi/partitioned*')
-    #client().reducetree('taxi/cleaned*')
-    #client().reducetree('taxi/index*')
+    client().reducetree('taxi/partitioned*')
+    client().reducetree('taxi/cleaned*')
+    client().reducetree('taxi/index*')
     client().reducetree('taxi/projections*')
     client().reducetree('taxi/raw/projections*')    
     import matplotlib.cm as cm
