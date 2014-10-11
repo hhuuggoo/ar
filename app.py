@@ -45,13 +45,16 @@ def taxidata(pickup):
     else:
         pickup = False
     try:
-        bounds = request.get_json()
+        data = request.get_json()
     except BadRequest:
         import pdb; pdb.set_trace()
-        bounds = {}
-    filters = None
-    if bounds:
-        bounds = (bounds['xmin'], bounds['xmax'], bounds['ymin'], bounds['ymax'])
+        data = {}
+    if data.get('filter_url'):
+        filters = du(data.get('filter_url'))
+    else:
+        filters = None
+    if data:
+        bounds = (data['xmin'], data['xmax'], data['ymin'], data['ymax'])
         bounds = (max(bounds[0], gbounds[0]),
                   min(bounds[1], gbounds[1]),
                   max(bounds[2], gbounds[2]),

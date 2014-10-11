@@ -36,6 +36,9 @@ ar_data_source.main = () ->
 
   class ARDataSource extends HasProperties
     type: 'ARDataSource'
+    initialize : (attrs, options) ->
+      super(attrs, options)
+      @cache = {}
     update : (column_data_source, renderer_view)  ->
       resp = @_update(column_data_source, renderer_view, true)
       resp.done (() =>
@@ -47,18 +50,19 @@ ar_data_source.main = () ->
         xmax = renderer_view.plot_view.x_range.get('end')
         ymin = renderer_view.plot_view.y_range.get('start')
         ymax = renderer_view.plot_view.y_range.get('end')
-        bounds = {
+        data = {
           'xmin' : xmin,
           'ymin' : ymin,
           'xmax' : xmax,
           'ymax' : ymax
         }
       else
-        bounds = {}
+        data = {}
+      data['filter_url'] = @get('filter_url')
       resp = $.ajax(
         dataType: 'json'
         url : @get('data_url')
-        data : JSON.stringify(bounds)
+        data : JSON.stringify(data)
         xhrField :
           withCredentials : true
         method : 'POST'
@@ -75,11 +79,31 @@ ar_data_source.main = () ->
       )
       @listenTo(pv.x_range, 'change', callback)
       @listenTo(pv.y_range, 'change', callback)
+      @listenTo(this, 'change:filter_url', callback)
 
+      ## HACK
+      @listenTo(column_data_source, 'change', () =>
+        if column_data_source.get('data').image.length == 0
+          column_data_source.set('data', @cache[column_data_source.id])
+        if column_data_source.changed.selector?
+          geom = column_data_source.get('selector').get('geometry')
+          bounds = pv.map_from_screen(
+            [geom['vx0'], geom['vx1']],
+            [geom['vy0'], geom['vy1']]
+            'data'
+          )
+          x_bounds = bounds[0]
+          y_bounds = bounds[1]
+          @save('selector', {'data_geometry' : {
+            'x0' : x_bounds[0], 'x1' : x_bounds[1],
+            'y0' : y_bounds[0], 'y1' : y_bounds[1]
+          }})
+      )
     set_data : (data, column_data_source) ->
       orig_data = _.clone(column_data_source.get('data'))
       _.extend(orig_data, data)
       column_data_source.set('data', orig_data)
+      @cache[column_data_source.id] = orig_data
 
   class ARDataSources extends Backbone.Collection
     model: ARDataSource

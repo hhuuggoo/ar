@@ -55,7 +55,7 @@ class ARDataset(object):
     lxres = 600
     lyres = 600
     gbounds = (-74.05, -73.75, 40.5, 40.99)
-    target_partitions = np.array([-74.05, -74.03503217, -74.02006433, -74.0050965 , 
+    target_partitions = np.array([-74.05, -74.03503217, -74.02006433, -74.0050965 ,
                                   -73.996395  , -73.99487937,
                                   -73.9911765 , -73.98567113, -73.98415025, -73.9816325 ,
                                   -73.979851  , -73.97865187, -73.977682  , -73.97634288,
@@ -138,7 +138,7 @@ class ARDataset(object):
             ed = end_val_overlap
             def helper(data):
                 val = (data >= st) & (data <= ed)
-                return val                        
+                return val
             results = chunked.query(
                 {'pickup_longitude' : [helper]},
                 prefilter=self.cleaned_data()
@@ -233,7 +233,7 @@ class ARDataset(object):
             chunked = Chunked([partition])
             c.bc(render, chunked.chunks, partition_info, filters, self.gbounds,
                  grid_shape, self.mark,
-                 'pickup_longitude', 'pickup_latitude')
+                 xfield, yfield)
         c.execute()
         results = c.br()
         ed = time.time()
@@ -241,7 +241,7 @@ class ARDataset(object):
         self.cache[url] = grid_shape, results
         do(self.cache[url]).save(url)
         return local_indexes, self.cache[url]
-        
+
 from fast_project import project as fast_project
 def render(chunks, partition_spec, filters,
            grid_data_bounds, grid_shape, mark, xfield, yfield,
@@ -265,20 +265,18 @@ def render(chunks, partition_spec, filters,
         path = source.local_path()
         f = h5py.File(path, 'r')
         try:
-            ds = f[xfield]
-            xdata = smartslice(ds, start, end, bvector)
-            ds = f[yfield]
-            ydata = smartslice(ds, start, end, bvector)
+            ds1 = f[xfield]
+            xdata = smartslice(ds1, start, end, bvector)
+            ds2 = f[yfield]
+            ydata = smartslice(ds2, start, end, bvector)
+            print 'FILTERSHAPE', source.data_url, ds1.shape, xdata.shape, ds2.shape, ydata.shape, bvector.sum()
         finally:
             f.close()
         mark = mark.astype('float64')
         args = (xdata, ydata, grid) + bounds + (mark,)
         md = time.time()
-        print 'DATA EXTRACT', md -st
-        print 'SHAPE', xdata.shape, ydata.shape, grid.shape, mark.shape
         fast_project(*args)
         ed = time.time()
-        print 'fast_project', grid.shape, source.data_url, xdata.shape, ydata.shape, ed-st
     #grid = scipy.ndimage.convolve(grid, mark)
     st = start_idx - start_idx_overlap
     ed = end_idx - start_idx_overlap
@@ -325,11 +323,11 @@ class KSXChunkedGrid(object):
 
 if __name__ == "__main__":
     setup_client('http://power:6323/')
-    client().reducetree('taxi/partitioned*')
-    client().reducetree('taxi/cleaned*')
-    client().reducetree('taxi/index*')
-    client().reducetree('taxi/projections*')
-    client().reducetree('taxi/raw/projections*')    
+    #client().reducetree('taxi/partitioned*')
+    #client().reducetree('taxi/cleaned*')
+    #client().reducetree('taxi/index*')
+    #client().reducetree('taxi/projections*')
+    #client().reducetree('taxi/raw/projections*')
     import matplotlib.cm as cm
     st = time.time()
     ds = ARDataset()

@@ -53,6 +53,11 @@
 
       ARDataSource.prototype.type = 'ARDataSource';
 
+      ARDataSource.prototype.initialize = function(attrs, options) {
+        ARDataSource.__super__.initialize.call(this, attrs, options);
+        return this.cache = {};
+      };
+
       ARDataSource.prototype.update = function(column_data_source, renderer_view) {
         var resp;
         resp = this._update(column_data_source, renderer_view, true);
@@ -64,25 +69,26 @@
       };
 
       ARDataSource.prototype._update = function(column_data_source, renderer_view, initial) {
-        var bounds, resp, xmax, xmin, ymax, ymin;
+        var data, resp, xmax, xmin, ymax, ymin;
         if (!initial) {
           xmin = renderer_view.plot_view.x_range.get('start');
           xmax = renderer_view.plot_view.x_range.get('end');
           ymin = renderer_view.plot_view.y_range.get('start');
           ymax = renderer_view.plot_view.y_range.get('end');
-          bounds = {
+          data = {
             'xmin': xmin,
             'ymin': ymin,
             'xmax': xmax,
             'ymax': ymax
           };
         } else {
-          bounds = {};
+          data = {};
         }
+        data['filter_url'] = this.get('filter_url');
         return resp = $.ajax({
           dataType: 'json',
           url: this.get('data_url'),
-          data: JSON.stringify(bounds),
+          data: JSON.stringify(data),
           xhrField: {
             withCredentials: true
           },
@@ -105,14 +111,38 @@
           };
         })(this));
         this.listenTo(pv.x_range, 'change', callback);
-        return this.listenTo(pv.y_range, 'change', callback);
+        this.listenTo(pv.y_range, 'change', callback);
+        this.listenTo(this, 'change:filter_url', callback);
+        return this.listenTo(column_data_source, 'change', (function(_this) {
+          return function() {
+            var bounds, geom, x_bounds, y_bounds;
+            if (column_data_source.get('data').image.length === 0) {
+              column_data_source.set('data', _this.cache[column_data_source.id]);
+            }
+            if (column_data_source.changed.selector != null) {
+              geom = column_data_source.get('selector').get('geometry');
+              bounds = pv.map_from_screen([geom['vx0'], geom['vx1']], [geom['vy0'], geom['vy1']], 'data');
+              x_bounds = bounds[0];
+              y_bounds = bounds[1];
+              return _this.save('selector', {
+                'data_geometry': {
+                  'x0': x_bounds[0],
+                  'x1': x_bounds[1],
+                  'y0': y_bounds[0],
+                  'y1': y_bounds[1]
+                }
+              });
+            }
+          };
+        })(this));
       };
 
       ARDataSource.prototype.set_data = function(data, column_data_source) {
         var orig_data;
         orig_data = _.clone(column_data_source.get('data'));
         _.extend(orig_data, data);
-        return column_data_source.set('data', orig_data);
+        column_data_source.set('data', orig_data);
+        return this.cache[column_data_source.id] = orig_data;
       };
 
       return ARDataSource;
