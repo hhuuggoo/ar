@@ -19,10 +19,10 @@ class TaxiApp(VBox):
     extra_js=['window.ar_data_source.main();']
     pickup_plot = Instance(Plot)
     dropoff_plot = Instance(Plot)
-    gbounds = (-74.19, -73.7, 40.5, 40.99)
+    gbounds = (-74.05, -73.75, 40.5, 40.99)
     @classmethod
     def create(cls):
-        gbounds = (-74.19, -73.7, 40.5, 40.99)
+        gbounds = cls.gbounds
         xmin, xmax, ymin, ymax = gbounds
         app = cls()
         data = ARDataSource(

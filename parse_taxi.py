@@ -11,7 +11,7 @@ datadir = "/data"
 path = "/data/taxi"
 for root, dirs, files in os.walk(path):
     for f in files:
-        if not f.endswith('hdf5'):
+        if not f.endswith('csv'):
             continue
         path = join(root, f)
         url = relpath(path, datadir)

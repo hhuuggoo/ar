@@ -8,8 +8,6 @@ import time
 import pandas as pd
 import cStringIO as StringIO
 from kitchensink import setup_client, client, do, du, dp
-setup_client('http://power:6323/')
-c = client(rpc_name='data', queue_name='data')
 
 def get_length(source):
     f = h5py.File(source.local_path(), 'r')
@@ -17,7 +15,7 @@ def get_length(source):
     return f[cols[0]].shape[0]
 
 def chunks(length, target=500000.):
-    num = math.ceil(length / target)
+    num = max(math.ceil(length / target), 2)
     splits = np.linspace(0, length, num).astype('int')
     splits[-1] = length
     output = [(splits[x], splits[x+1]) for x in range(len(splits) - 1)]
