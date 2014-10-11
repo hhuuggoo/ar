@@ -1,3 +1,6 @@
+import time
+import datetime as dt
+
 from bokeh.objects import  ServerDataSource, Plot
 from bokeh.widgets import HBox, VBox
 from bokeh.plot_object import PlotObject
@@ -67,3 +70,30 @@ class TaxiApp(VBox):
         app.dropoff_plot = plot
         app.children = [app.pickup_plot, app.dropoff_plot]
         return app
+        
+from partition import ARDataset, KSXChunkedGrid
+ds = ARDataset()
+def get_data(pickup, local_bounds, filters):
+    if pickup:
+        xfield = 'pickup_longitude'
+        yfield = 'pickup_latitude'
+    else:
+        xfield = 'dropoff_longitude'
+        yfield = 'dropoff_latitude'
+    st = time.time()
+    local_indexes, (grid_shape, results) = ds.project(
+        local_bounds, xfield, yfield, filters
+    )
+    ed = time.time()
+    print 'PROJECT', ed-st
+    lxdim1, lxdim2, lydim1, lydim2 = local_indexes
+    print 'LINDX', lxdim1, lxdim2, lydim1, lydim2
+    st = time.time()
+    grid = KSXChunkedGrid(results, grid_shape[-1])
+    data = grid.get(lxdim1, lxdim2, lydim1, lydim2)
+    ed = time.time()
+    print 'GRID', ed-st
+    data = data.T[:]
+    data = data ** 0.2
+    return data
+

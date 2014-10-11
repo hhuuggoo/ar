@@ -107,7 +107,8 @@ def kssmartsliceapply(source, start, end, boolobj, ops=None):
     obj = do(results)
     obj.save(prefix='sliced')
     return obj
-
+    
+lengths = {}
 class Chunked(object):
     def __init__(self, sources):
         self.sources = sources
@@ -118,10 +119,16 @@ class Chunked(object):
         if self._lengths is not None:
             return self._lengths
         c = client()
+        if all([source.data_url in lengths for source in self.sources]):
+            print ('LENGTHS from cache')
+            return [lengths[source.data_url] for source in self.sources]
+        print ('grabbing LENGTHS ')            
         for source in self.sources:
             c.bc(get_length, source)
         c.execute()
         self._lengths = c.br()
+        for source, length in zip(self.sources, self._lengths):
+            lengths[source.data_url] = length
         return self._lengths
 
     @property

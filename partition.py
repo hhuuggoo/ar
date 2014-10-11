@@ -15,16 +15,10 @@ from search import Chunked, smartslice, boolfilter
 from render import (compute_partitions, discrete_bounds, compute_scales, circle)
 
 def select(data, x1, xx1, xx2, ystart, yend):
-    print 'START', dt.datetime.now().isoformat()
-    st = time.time()
     path = data.local_path()
     data = h5py.File(path)['data']
     output = data[int(xx1-x1):int(xx2-x1), int(ystart):int(yend)]
-    ed = time.time()
-    obj = do(output)
-    obj.save(prefix='taxi/arrays')
-    print 'DONE', dt.datetime.now().isoformat()
-    return obj
+    return output
 
 def _h5py_append(src, dst, start, end, boolvect):
     print src, dst
@@ -61,13 +55,14 @@ class ARDataset(object):
     lxres = 600
     lyres = 600
     gbounds = (-74.05, -73.75, 40.5, 40.99)
-    target_partitions = np.array([-74.048607, -74.005325, -73.999428, -73.994133, -73.990959,
-                               -73.988007, -73.984795, -73.981926, -73.978752, -73.975128,
-                               -73.970627, -73.964417, -73.957031, -73.948601, -73.750404])
-    # target_partitions = np.array([-74.05, -74.001808, -73.994064,
-    #                               -73.981331, -73.976891, -73.971153,
-    #                               -73.962082, -73.7 ])
-    scales = np.array([1, 2, 4, 8, 16, 32, 48]).astype('float64')
+    target_partitions = np.array([-74.05      , -74.0050965 , -73.996395  , -73.99487937,
+                                  -73.9911765 , -73.98567113, -73.98415025, -73.9816325 ,
+                                  -73.979851  , -73.97865187, -73.977682  , -73.97634288,
+                                  -73.975685  , -73.97375225, -73.97268075, -73.97010162,
+                                  -73.969421  , -73.96765362, -73.96539125, -73.96124612,
+                                  -73.956768  , -73.95199587, -73.9332795 , -73.88745962,
+                                  -73.84163975, -73.79581988, -73.75      ])
+    scales = np.array([1, 2, 4, 8, 16, 32, 64, 128]).astype('float64')
     cache = {}
 
     def __init__(self):
@@ -75,7 +70,7 @@ class ARDataset(object):
         self._chunked = None
         self._partitions = None
         self._partition_indices = None
-        self.mark = circle(radius=1.0)
+        self.mark = np.array([[1,1],[1,1]])
 
     def clean_lat(self, x):
         return (x >= self.gbounds[2]) & (x <= self.gbounds[3])
@@ -119,7 +114,6 @@ class ARDataset(object):
         # we use zoom1 grid shape to compute partitions
         # that way partitions don't need to change
         # as we zoom - it's just that we might have extra overlap
-        import pdb; pdb.set_trace()
         partition_grid_shape = [self.lxres, self.lyres]
         url = 'taxi/indexes/partitioned'
         if self._partition_indices:
@@ -138,6 +132,9 @@ class ARDataset(object):
             print start_val_overlap, end_val_overlap
             st = start_val_overlap
             ed = end_val_overlap
+            def helper(data):
+                val = (data >= st) & (data <= ed)
+                return val                        
             results = chunked.query(
                 {'pickup_longitude' : [helper]},
                 prefilter=self.cleaned_data()
@@ -267,7 +264,11 @@ def render(chunks, partition_spec, filters,
             ydata = smartslice(ds, start, end, bvector)
         finally:
             f.close()
-        fast_project(xdata, ydata, grid, *bounds)
+        args = (xdata, ydata, grid) + bounds + (mark,)
+        st = time.time()
+        fast_project(*args)
+        ed = time.time()
+        print 'fast_project', grid.shape, source.data_url, xdata.shape, ydata.shape, ed-st
     #grid = scipy.ndimage.convolve(grid, mark)
     st = start_idx - start_idx_overlap
     ed = end_idx - start_idx_overlap
@@ -291,33 +292,33 @@ class KSXChunkedGrid(object):
 
     def get(self, xstart, xend, ystart, yend):
         c = client()
-        bigdata = np.zeros((int(xend - xstart), int(yend-ystart)))
-        xsize = xend - xstart
-        assignments = []
-        st = time.time()
-        for x1, x2, data in self.data:
-            xx1 = max(x1, xstart)
-            xx2 = min(x2, xend)
-            if xx2 - xx1 > 0:
-                assignments.append((xx1 - xstart, xx2 - xstart))
-                c.bc(select, data, x1, xx1, xx2, ystart, yend)
+        def _get(xstart, xend, ystart, yend):
+            bigdata = np.zeros((int(xend - xstart), int(yend-ystart)))
+            xsize = xend - xstart
+            assignments = []
+            results = []
+            st = time.time()
+            for x1, x2, data in self.data:
+                xx1 = max(x1, xstart)
+                xx2 = min(x2, xend)
+                if xx2 - xx1 > 0:
+                    assignments.append((xx1 - xstart, xx2 - xstart))
+                    results.append(select(data, x1, xx1, xx2, ystart, yend))
+            for assignment, output in zip(assignments, results):
+                bigdata[assignment[0]:assignment[1], :] = output
+            return bigdata
+        c.bc(_get, xstart, xend, ystart, yend)
         c.execute()
-        md = time.time()
-        print 'MID', md-st, dt.datetime.now()
-        results = c.br()
-        ed = time.time()
-        print 'JOBS DONE', ed-st
-        #print assignments
-        for assignment, output in zip(assignments, results):
-            bigdata[assignment[0]:assignment[1], :] = output.obj()
-        return bigdata
+        return c.br()[0]
 
 
 if __name__ == "__main__":
+    setup_client('http://power:6323/')
     #client().reducetree('taxi/partitioned*')
     #client().reducetree('taxi/cleaned*')
     #client().reducetree('taxi/index*')
-    #client().reducetree('taxi/projections*')
+    client().reducetree('taxi/projections*')
+    client().reducetree('taxi/raw/projections*')    
     import matplotlib.cm as cm
     st = time.time()
     ds = ARDataset()

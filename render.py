@@ -90,9 +90,9 @@ def compute_partitions(target_partitions, gbounds, grid_shape, overlap):
 ### dumb function that returns a circular-ish kernel for convolution
 def circle(radius=3):
     # todo: better circle
-    xx, yy = np.ogrid[:2 * radius,:2 * radius]
-    xx = xx - radius + 0.5
-    yy = yy - radius + 0.5
+    xx, yy = np.ogrid[:2 * radius + 1,:2 * radius + 1]
+    xx = xx - radius 
+    yy = yy - radius 
     mask = np.sqrt(xx ** 2 +  yy **2) < radius
     return mask
 
@@ -104,13 +104,17 @@ import math
 ### a 2d grid (2d binning, similar to np.histogram2d
 ### exception is that we weight the values on neighboring pixels, instead of
 ### just having them fall into a bin
-def project(xdata, ydata, grid, xmin, xmax, ymin, ymax):
+def project(xdata, ydata, grid, xmin, xmax, ymin, ymax, mark):
     xshape = grid.shape[0]
     yshape = grid.shape[1]
+    max_x = xshape - 1
+    max_y = yshape - 1
     xlimit = xmax - xmin
     ylimit = ymax - ymin
     xslope = xlimit / (xshape - 1)
     yslope = ylimit / (yshape - 1)
+    mark_offset_x = int(math.floor(mark.shape[0] / 2))
+    mark_offset_y = int(math.floor(mark.shape[1] / 2))
     for idx in range(len(xdata)):
         xcoord = (xdata[idx] - xmin) / xslope
         ycoord = (ydata[idx] - ymin) / yslope
@@ -120,28 +124,108 @@ def project(xdata, ydata, grid, xmin, xmax, ymin, ymax):
         yrem = ycoord - ycoord_int
         xbase = 1 - xrem
         ybase = 1 - yrem
-
         xoffset = xcoord_int + 1
         yoffset = ycoord_int + 1
-        xx = xoffset
-        yy = yoffset
-        if xx < xshape and xx > 0 and yy <yshape and yy>0:
-            grid[xx, yy] +=  xbase * ybase
+        xx = xcoord_int
+        yy = ycoord_int
+        factor = xbase * ybase
+        xx2 = xx - mark_offset_x
+        yy2 = yy - mark_offset_y
+        for c1 in range(mark.shape[0]):
+            for c2 in range(mark.shape[1]):
+                xx1 = xx2 + c1
+                yy1 = yy2 + c2
+                if xx1 > 0 and xx1 < xshape and xx1 > 0 and yy1 <yshape and yy1>0:
+                    grid[xx1, yy1] += mark[c1, c2] * factor
         xx = xoffset
         yy = ycoord_int
-        if xx < xshape and xx > 0 and yy <yshape and yy>0:
-            grid[xx, yy] +=  xrem * ybase
+        factor = xrem * ybase
+        xx2 = xx - mark_offset_x
+        yy2 = yy - mark_offset_y
+        for c1 in range(mark.shape[0]):
+            for c2 in range(mark.shape[1]):
+                xx1 = xx2 + c1
+                yy1 = yy2 + c2
+                if xx1 > 0 and xx1 < xshape and xx1 > 0 and yy1 <yshape and yy1>0:
+                    grid[xx1, yy1] += mark[c1, c2] * factor
+        
         xx = xcoord_int
         yy = yoffset
-        if xx < xshape and xx > 0 and yy <yshape and yy>0:
-            grid[xx, yy] += xbase * yrem
+        factor = xbase * yrem
+        xx2 = xx - mark_offset_x
+        yy2 = yy - mark_offset_y
+        for c1 in range(mark.shape[0]):
+            for c2 in range(mark.shape[1]):
+                xx1 = xx2 + c1
+                yy1 = yy2 + c2
+                if xx1 > 0 and xx1 < xshape and xx1 > 0 and yy1 <yshape and yy1>0:
+                    grid[xx1, yy1] += mark[c1, c2] * factor
+        
         xx = xoffset
         yy = yoffset
-        if xx < xshape and xx > 0 and yy <yshape and yy>0:
-            grid[xx, yy] += xrem * yrem
+        factor = xrem * yrem
+        xx2 = xx - mark_offset_x
+        yy2 = yy - mark_offset_y
+        for c1 in range(mark.shape[0]):
+            for c2 in range(mark.shape[1]):
+                xx1 = xx2 + c1
+                yy1 = yy2 + c2
+                if xx1 > 0 and xx1 < xshape and xx1 > 0 and yy1 <yshape and yy1>0:
+                    grid[xx1, yy1] += mark[c1, c2] * factor
     return grid
 fast_project = numba.jit(project, nopython=True)
 #fast_project = project
+        
+
+        # xx1 = xx - mark_offset_x
+        # xx2 = yy + mark_offset_x
+        # yy1 = yy - mark_offset_y
+        # yy2 = yy + mark_offset_y
+        # spill_xx1 = max(0 - xx1, 0)
+        # spill_xx2 = max(xx2 - max_x, 0)
+        # spill_yy1 = max(0 - yy1, 0)
+        # spill_yy2 = max(yy2 - max_y, 0)
+        # gx1 = xx - spill_xx1
+        # gx2 = xx + spill_xx2
+        # gy1 = yy - spill_yy1
+        # gy2 = yy + spill_yy2
+        
+        # if xx < xshape and xx > 0 and yy <yshape and yy>0:
+        #     grid[xx - spill_xx1 : xx + spill_xx2, yy - spill_yy1 : yy + spill_yy2] = mark[spill_xx1:spill_xx2, spill_yy1:spill_yy2] * xrem * ybase
+        # xx = xcoord_int
+        # yy = yoffset
+        # xx1 = xx - mark_offset_x
+        # xx2 = yy + mark_offset_x
+        # yy1 = yy - mark_offset_y
+        # yy2 = yy + mark_offset_y
+        # spill_xx1 = max(0 - xx1, 0)
+        # spill_xx2 = max(xx2 - max_x, 0)
+        # spill_yy1 = max(0 - yy1, 0)
+        # spill_yy2 = max(yy2 - max_y, 0)
+        # gx1 = xx - spill_xx1
+        # gx2 = xx + spill_xx2
+        # gy1 = yy - spill_yy1
+        # gy2 = yy + spill_yy2
+        
+        # if xx < xshape and xx > 0 and yy <yshape and yy>0:
+        #     grid[xx - spill_xx1 : xx + spill_xx2, yy - spill_yy1 : yy + spill_yy2] = mark[spill_xx1:spill_xx2, spill_yy1:spill_yy2] * 
+        # xx = xoffset
+        # yy = yoffset
+        # xx1 = xx - mark_offset_x
+        # xx2 = yy + mark_offset_x
+        # yy1 = yy - mark_offset_y
+        # yy2 = yy + mark_offset_y
+        # spill_xx1 = int(max(0 - xx1, 0))
+        # spill_xx2 = int(max(xx2 - max_x, 0))
+        # spill_yy1 = int(max(0 - yy1, 0))
+        # spill_yy2 = int(max(yy2 - max_y, 0))
+        # gx1 = xx - spill_xx1
+        # gx2 = xx + spill_xx2
+        # gy1 = yy - spill_yy1
+        # gy2 = yy + spill_yy2
+        # if xx < xshape and xx > 0 and yy <yshape and yy>0:
+        #     grid[xx - spill_xx1 : xx + spill_xx2, yy - spill_yy1 : yy + spill_yy2] = mark[spill_xx1:spill_xx2, spill_yy1:spill_yy2] * xrem * yrem
+
 def render(xdata, ydata, grid, grid_data_bounds, shape):
     output = fast_project(xdata, ydata,
                           grid,
