@@ -133,7 +133,6 @@ class ARDataset(object):
         partitioned_data = []
         for p in partitions:
             start_val_overlap, end_val_overlap = p[3:5]
-            print start_val_overlap, end_val_overlap
             st = start_val_overlap
             ed = end_val_overlap
             def helper(data):
@@ -143,7 +142,6 @@ class ARDataset(object):
                 {'pickup_longitude' : [helper]},
                 prefilter=self.cleaned_data()
             )
-            print [x.obj().sum() for x in results]
             partitioned_data.append(results)
         self._partition_indices = zip(partitions, partitioned_data)
         do(self._partition_indices).save(url=url)
@@ -179,9 +177,26 @@ class ARDataset(object):
         do(self._cleaned).save(url='taxi/cleaned')
         return self._cleaned
 
+    def project(self, local_bounds, xfield, yfield, filters=None):
+        if filters is None:
+            filters = {}
+        else:
+            filters = filters.obj()
+        mark = self.mark
+        grid_shape = [self.lxres, self.lyres]
+        c = client()
+        st = time.time()
+        for source, start, end in self.chunked().chunks:
+            c.bc(render, source, start, end, filters,
+                 local_bounds, grid_shape, mark, xfield, yfield)
+        c.execute()
+        results = c.br()
+        ed = time.time()
+        return grid_shape, results
+
     def query(self, query_dict):
         c = client()
-        chunked = Chunked(self.partitions())
+        chunked = self.chunked()
         for source, start, end in chunked.chunks:
             c.bc(boolfilter, source, start, end, query_dict)
         c.execute()
@@ -193,95 +208,48 @@ class ARDataset(object):
         output.save(prefix='taxi/query')
         return output
 
-    def project(self, local_bounds, xfield, yfield, filters=None):
+
+    def aggregate(self, results, grid_shape):
         c = client()
-        xscale, yscale = compute_scales(local_bounds, self.gbounds,
-                                        self.scales)
-        print ('SCALES', xscale, yscale)
-        grid_shape, grid_data_bounds, local_indexes, units = discrete_bounds(
-            (xscale, yscale),
-            local_bounds,
-            self.gbounds,
-            self.lxres,
-            self.lyres
-        )
-        if filters:
-            t = (filters.data_url, xfield, yfield, grid_shape[0], grid_shape[1])
-            url = "taxi/projections/%s/%s/%s/%s/%s" % t
-        else:
-            t = (xfield, yfield, grid_shape[0], grid_shape[1])
-            url = "taxi/projections/%s/%s/%s/%s" % t
-        if filters is not None:
-            filters = filters.obj()
-        else:
-            filters = {}
-        if url in self.cache:
-            return local_indexes, self.cache[url]
-        if c.path_search(url):
-            return local_indexes, du(url).obj()
-        c = client()
-        # these should matche the data partitions, except
-        # the actual overlap may be reduced due to different
-        # zoom level
-        partition_specs = compute_partitions(self.target_partitions,
-                                             self.gbounds,
-                                             grid_shape,
-                                             self.overlap)
-        st = time.time()
-        print 'PROJECTIONG'
-        for partition_info, partition in zip(partition_specs, self.partitions()):
-            chunked = Chunked([partition])
-            c.bc(render, chunked.chunks, partition_info, filters, self.gbounds,
-                 grid_shape, self.mark,
-                 xfield, yfield)
+        c.bc(aggregate, results, grid_shape)
         c.execute()
-        results = c.br()
-        ed = time.time()
-        print 'DONE PROJECTIONG', ed-st
-        self.cache[url] = grid_shape, results
-        do(self.cache[url]).save(url)
-        return local_indexes, self.cache[url]
+        return c.br()[0]
+def aggregate(results, grid_shape):
+    bigdata = np.zeros(grid_shape)
+    for source in results:
+        path = source.local_path()
+        data = h5py.File(path)['data']
+        bigdata += data[:,:]
+    obj = do(bigdata)
+    obj.save(prefix='taxi/aggregate')
+    return obj
 
 from fast_project import project as fast_project
-def render(chunks, partition_spec, filters,
-           grid_data_bounds, grid_shape, mark, xfield, yfield,
-       ):
-    (overlap, start_val, end_val,
-     start_val_overlap, end_val_overlap,
-     start_idx, end_idx,
-     start_idx_overlap, end_idx_overlap) = partition_spec
+def render(source, start, end, filters, grid_data_bounds,
+           grid_shape, mark, xfield, yfield):
     gxmin, gxmax, gymin, gymax = grid_data_bounds
-    xdatas = []
-    ydatas = []
-    grid = np.zeros((end_idx_overlap - start_idx_overlap, grid_shape[1]))
-    bounds = (start_val_overlap, end_val_overlap, gymin, gymax)
-    for source, start, end in chunks:
-        st = time.time()
-        boolean_obj = filters.get((source.data_url, start, end))
-        if boolean_obj is not None:
-            bvector = boolean_obj.obj()
-        else:
-            bvector = None
-        path = source.local_path()
-        f = h5py.File(path, 'r')
-        try:
-            ds1 = f[xfield]
-            xdata = smartslice(ds1, start, end, bvector)
-            ds2 = f[yfield]
-            ydata = smartslice(ds2, start, end, bvector)
-            print 'FILTERSHAPE', source.data_url, ds1.shape, xdata.shape, ds2.shape, ydata.shape, bvector.sum()
-        finally:
-            f.close()
-        mark = mark.astype('float64')
-        args = (xdata, ydata, grid) + bounds + (mark,)
-        md = time.time()
-        fast_project(*args)
-        ed = time.time()
-    #grid = scipy.ndimage.convolve(grid, mark)
-    st = start_idx - start_idx_overlap
-    ed = end_idx - start_idx_overlap
-    grid = grid[st:ed, :]
-    st = time.time()
+    grid = np.zeros(grid_shape)
+    boolean_obj = filters.get((source.data_url, start, end))
+    if boolean_obj is not None:
+        bvector = boolean_obj.obj()
+    else:
+        bvector = None
+    path = source.local_path()
+    f = h5py.File(path, 'r')
+    try:
+        ds1 = f[xfield]
+        xdata = smartslice(ds1, start, end, bvector)
+        ds2 = f[yfield]
+        ydata = smartslice(ds2, start, end, bvector)
+        selector = (xdata >= gxmin) & (xdata <= gxmax)
+        selector = selector & (ydata >= gymin) & (ydata <=gymax)
+        xdata = xdata[selector]
+        ydata = ydata[selector]
+    finally:
+        f.close()
+    mark = mark.astype('float64')
+    args = (xdata, ydata, grid) + grid_data_bounds + (mark,)
+    fast_project(*args)
     path = tempfile.NamedTemporaryFile().name
     f = h5py.File(path)
     f.create_dataset('data', data=grid, compression='lzf')
@@ -289,36 +257,149 @@ def render(chunks, partition_spec, filters,
     obj = dp(path)
     obj.save(prefix="taxi/raw/projection")
     ed = time.time()
-    print ('DONE saving', source.local_path(), ed-st)
-    return start_idx, end_idx, obj
+    return obj
 
-class KSXChunkedGrid(object):
-    def __init__(self, data, yshape):
-        """data is a list of x offsets, and a 2d array
-        """
-        self.data = data
-        self.yshape = yshape
+    # def query(self, query_dict):
+    #     c = client()
+    #     chunked = Chunked(self.partitions())
+    #     for source, start, end in chunked.chunks:
+    #         c.bc(boolfilter, source, start, end, query_dict)
+    #     c.execute()
+    #     results = c.br()
+    #     output = {}
+    #     for result, (source, start, end) in zip(results, chunked.chunks):
+    #         output[(source.data_url, start, end)] = result
+    #     output = do(output)
+    #     output.save(prefix='taxi/query')
+    #     return output
 
-    def get(self, xstart, xend, ystart, yend):
-        c = client()
-        def _get(xstart, xend, ystart, yend):
-            bigdata = np.zeros((int(xend - xstart), int(yend-ystart)))
-            xsize = xend - xstart
-            assignments = []
-            results = []
-            st = time.time()
-            for x1, x2, data in self.data:
-                xx1 = max(x1, xstart)
-                xx2 = min(x2, xend)
-                if xx2 - xx1 > 0:
-                    assignments.append((xx1 - xstart, xx2 - xstart))
-                    results.append(select(data, x1, xx1, xx2, ystart, yend))
-            for assignment, output in zip(assignments, results):
-                bigdata[assignment[0]:assignment[1], :] = output
-            return bigdata
-        c.bc(_get, xstart, xend, ystart, yend)
-        c.execute()
-        return c.br()[0]
+    # def project(self, local_bounds, xfield, yfield, filters=None):
+    #     c = client()
+    #     xscale, yscale = compute_scales(local_bounds, self.gbounds,
+    #                                     self.scales)
+    #     print ('SCALES', xscale, yscale)
+    #     grid_shape, grid_data_bounds, local_indexes, units = discrete_bounds(
+    #         (xscale, yscale),
+    #         local_bounds,
+    #         self.gbounds,
+    #         self.lxres,
+    #         self.lyres
+    #     )
+    #     if filters:
+    #         t = (filters.data_url, xfield, yfield, grid_shape[0], grid_shape[1])
+    #         url = "taxi/projections/%s/%s/%s/%s/%s" % t
+    #     else:
+    #         t = (xfield, yfield, grid_shape[0], grid_shape[1])
+    #         url = "taxi/projections/%s/%s/%s/%s" % t
+    #     if filters is not None:
+    #         filters = filters.obj()
+    #     else:
+    #         filters = {}
+    #     if url in self.cache:
+    #         return local_indexes, self.cache[url]
+    #     if c.path_search(url):
+    #         return local_indexes, du(url).obj()
+    #     c = client()
+    #     # these should matche the data partitions, except
+    #     # the actual overlap may be reduced due to different
+    #     # zoom level
+    #     partition_specs = compute_partitions(self.target_partitions,
+    #                                          self.gbounds,
+    #                                          grid_shape,
+    #                                          self.overlap)
+    #     st = time.time()
+    #     print 'PROJECTIONG'
+    #     for partition_info, partition in zip(partition_specs, self.partitions()):
+    #         chunked = Chunked([partition])
+    #         c.bc(render, chunked.chunks, partition_info, filters, self.gbounds,
+    #              grid_shape, self.mark,
+    #              xfield, yfield)
+    #     c.execute()
+    #     results = c.br()
+    #     ed = time.time()
+    #     print 'DONE PROJECTIONG', ed-st
+    #     self.cache[url] = grid_shape, results
+    #     do(self.cache[url]).save(url)
+    #     return local_indexes, self.cache[url]
+
+
+# from fast_project import project as fast_project
+# def render(chunks, partition_spec, filters,
+#            grid_data_bounds, grid_shape, mark, xfield, yfield,
+#        ):
+#     (overlap, start_val, end_val,
+#      start_val_overlap, end_val_overlap,
+#      start_idx, end_idx,
+#      start_idx_overlap, end_idx_overlap) = partition_spec
+#     gxmin, gxmax, gymin, gymax = grid_data_bounds
+#     xdatas = []
+#     ydatas = []
+#     grid = np.zeros((end_idx_overlap - start_idx_overlap, grid_shape[1]))
+#     bounds = (start_val_overlap, end_val_overlap, gymin, gymax)
+#     for source, start, end in chunks:
+#         st = time.time()
+#         boolean_obj = filters.get((source.data_url, start, end))
+#         if boolean_obj is not None:
+#             bvector = boolean_obj.obj()
+#         else:
+#             bvector = None
+#         path = source.local_path()
+#         f = h5py.File(path, 'r')
+#         try:
+#             ds1 = f[xfield]
+#             xdata = smartslice(ds1, start, end, bvector)
+#             ds2 = f[yfield]
+#             ydata = smartslice(ds2, start, end, bvector)
+#             print 'FILTERSHAPE', source.data_url, ds1.shape, xdata.shape, ds2.shape, ydata.shape, bvector.sum()
+#         finally:
+#             f.close()
+#         mark = mark.astype('float64')
+#         args = (xdata, ydata, grid) + bounds + (mark,)
+#         md = time.time()
+#         fast_project(*args)
+#         ed = time.time()
+#     #grid = scipy.ndimage.convolve(grid, mark)
+#     st = start_idx - start_idx_overlap
+#     ed = end_idx - start_idx_overlap
+#     grid = grid[st:ed, :]
+#     st = time.time()
+#     path = tempfile.NamedTemporaryFile().name
+#     f = h5py.File(path)
+#     f.create_dataset('data', data=grid, compression='lzf')
+#     f.close()
+#     obj = dp(path)
+#     obj.save(prefix="taxi/raw/projection")
+#     ed = time.time()
+#     print ('DONE saving', source.local_path(), ed-st)
+#     return start_idx, end_idx, obj
+
+# class KSXChunkedGrid(object):
+#     def __init__(self, data, yshape):
+#         """data is a list of x offsets, and a 2d array
+#         """
+#         self.data = data
+#         self.yshape = yshape
+
+#     def get(self, xstart, xend, ystart, yend):
+#         c = client()
+#         def _get(xstart, xend, ystart, yend):
+#             bigdata = np.zeros((int(xend - xstart), int(yend-ystart)))
+#             xsize = xend - xstart
+#             assignments = []
+#             results = []
+#             st = time.time()
+#             for x1, x2, data in self.data:
+#                 xx1 = max(x1, xstart)
+#                 xx2 = min(x2, xend)
+#                 if xx2 - xx1 > 0:
+#                     assignments.append((xx1 - xstart, xx2 - xstart))
+#                     results.append(select(data, x1, xx1, xx2, ystart, yend))
+#             for assignment, output in zip(assignments, results):
+#                 bigdata[assignment[0]:assignment[1], :] = output
+#             return bigdata
+#         c.bc(_get, xstart, xend, ystart, yend)
+#         c.execute()
+#         return c.br()[0]
 
 
 if __name__ == "__main__":

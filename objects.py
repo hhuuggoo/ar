@@ -85,7 +85,7 @@ class TaxiApp(HBox):
 
     def pickup_selector(self, obj, attrname, old, new):
         geom = new['data_geometry']
-        print geom
+        print 'PICKUP**', geom
         lxmin = min(geom['x0'], geom['x1'])
         lxmax = max(geom['x0'], geom['x1'])
         lymin = min(geom['y0'], geom['y1'])
@@ -106,7 +106,7 @@ class TaxiApp(HBox):
         if self.dropoff_ar_plot_source:
             self.dropoff_ar_plot_source.on_change('selector', self, 'dropoff_selector')
 
-from partition import ARDataset, KSXChunkedGrid
+from partition import ARDataset
 ds = ARDataset()
 def get_data(pickup, local_bounds, filters):
     if pickup:
@@ -116,18 +116,14 @@ def get_data(pickup, local_bounds, filters):
         xfield = 'dropoff_longitude'
         yfield = 'dropoff_latitude'
     st = time.time()
-    local_indexes, (grid_shape, results) = ds.project(
+    (grid_shape, results) = ds.project(
         local_bounds, xfield, yfield, filters
     )
+    md = time.time()
+    print 'PROJECT', md-st
+    data = ds.aggregate(results, grid_shape).obj()
     ed = time.time()
-    print 'PROJECT', ed-st
-    lxdim1, lxdim2, lydim1, lydim2 = local_indexes
-    print 'LINDX', lxdim1, lxdim2, lydim1, lydim2
-    st = time.time()
-    grid = KSXChunkedGrid(results, grid_shape[-1])
-    data = grid.get(lxdim1, lxdim2, lydim1, lydim2)
-    ed = time.time()
-    print 'GRID', ed-st
+    print 'GRID', ed-md
     data = data.T[:]
     data = data ** 0.2
     return data

@@ -113,26 +113,28 @@
         this.listenTo(pv.x_range, 'change', callback);
         this.listenTo(pv.y_range, 'change', callback);
         this.listenTo(this, 'change:filter_url', callback);
-        return this.listenTo(column_data_source, 'change', (function(_this) {
+        this.listenTo(column_data_source, 'change:data', (function(_this) {
+          return function() {
+            if (column_data_source.get('data').image.length === 0) {
+              return column_data_source.set('data', _this.cache[column_data_source.id]);
+            }
+          };
+        })(this));
+        return this.listenTo(column_data_source, 'select', (function(_this) {
           return function() {
             var bounds, geom, x_bounds, y_bounds;
-            if (column_data_source.get('data').image.length === 0) {
-              column_data_source.set('data', _this.cache[column_data_source.id]);
-            }
-            if (column_data_source.changed.selector != null) {
-              geom = column_data_source.get('selector').get('geometry');
-              bounds = pv.map_from_screen([geom['vx0'], geom['vx1']], [geom['vy0'], geom['vy1']], 'data');
-              x_bounds = bounds[0];
-              y_bounds = bounds[1];
-              return _this.save('selector', {
-                'data_geometry': {
-                  'x0': x_bounds[0],
-                  'x1': x_bounds[1],
-                  'y0': y_bounds[0],
-                  'y1': y_bounds[1]
-                }
-              });
-            }
+            geom = column_data_source.get('selector').get('geometry');
+            bounds = pv.map_from_screen([geom['vx0'], geom['vx1']], [geom['vy0'], geom['vy1']], 'data');
+            x_bounds = bounds[0];
+            y_bounds = bounds[1];
+            return _this.save('selector', {
+              'data_geometry': {
+                'x0': x_bounds[0],
+                'x1': x_bounds[1],
+                'y0': y_bounds[0],
+                'y1': y_bounds[1]
+              }
+            });
           };
         })(this));
       };

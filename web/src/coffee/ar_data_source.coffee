@@ -82,22 +82,23 @@ ar_data_source.main = () ->
       @listenTo(this, 'change:filter_url', callback)
 
       ## HACK
-      @listenTo(column_data_source, 'change', () =>
+      @listenTo(column_data_source, 'change:data', () =>
         if column_data_source.get('data').image.length == 0
           column_data_source.set('data', @cache[column_data_source.id])
-        if column_data_source.changed.selector?
-          geom = column_data_source.get('selector').get('geometry')
-          bounds = pv.map_from_screen(
-            [geom['vx0'], geom['vx1']],
-            [geom['vy0'], geom['vy1']]
-            'data'
-          )
-          x_bounds = bounds[0]
-          y_bounds = bounds[1]
-          @save('selector', {'data_geometry' : {
-            'x0' : x_bounds[0], 'x1' : x_bounds[1],
-            'y0' : y_bounds[0], 'y1' : y_bounds[1]
-          }})
+      )
+      @listenTo(column_data_source, 'select', () =>
+        geom = column_data_source.get('selector').get('geometry')
+        bounds = pv.map_from_screen(
+          [geom['vx0'], geom['vx1']],
+          [geom['vy0'], geom['vy1']]
+          'data'
+        )
+        x_bounds = bounds[0]
+        y_bounds = bounds[1]
+        @save('selector', {'data_geometry' : {
+          'x0' : x_bounds[0], 'x1' : x_bounds[1],
+          'y0' : y_bounds[0], 'y1' : y_bounds[1]
+        }})
       )
     set_data : (data, column_data_source) ->
       orig_data = _.clone(column_data_source.get('data'))

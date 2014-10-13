@@ -72,6 +72,7 @@ def taxidata(pickup):
                   dw=[xmax-xmin],
                   dh=[ymax-ymin],
                   palette=["Greys-256"])
+    print output
     output['image'] = [data.tolist()]
     result = make_json(ujson.dumps(output))
     return result
