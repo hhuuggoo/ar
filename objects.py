@@ -1,8 +1,9 @@
 import time
 import datetime as dt
+import numpy as np
 
 from bokeh.objects import  ServerDataSource, Plot, ColumnDataSource
-from bokeh.widgets import HBox, VBox
+from bokeh.widgets import HBox, VBox, VBoxForm, DateRangeSlider, Paragraph
 from bokeh.plot_object import PlotObject
 from bokeh.properties import (
     Datetime, HasProps, Dict, Enum, Either, Float, Instance, Int,
@@ -29,7 +30,9 @@ class TaxiApp(HBox):
     dropoff_raw_plot_source = Instance(ColumnDataSource)
     pickup_ar_plot_source = Instance(ARDataSource)
     dropoff_ar_plot_source = Instance(ARDataSource)
-
+    widgets = Instance(VBox)
+    date_slider = Instance(DateRangeSlider)
+    filters = Dict(String, Any)
 
     @classmethod
     def create(cls):
@@ -80,51 +83,92 @@ class TaxiApp(HBox):
         )
         app.dropoff_plot = plot
         app.dropoff_raw_plot_source = plot.select({'type' : ColumnDataSource})[0]
-        app.children = [app.pickup_plot, app.dropoff_plot]
+
+        app.widgets = VBoxForm()
+        app.date_slider = DateRangeSlider(value=(dt.datetime(2012, 1, 1),
+                                                 dt.datetime(2013, 1, 28)),
+                                          bounds=(dt.datetime(2012, 12, 31),
+                                                  dt.datetime(2013, 1, 31)),
+                                          step={'days' : 1},
+                                          range=({'days' : 1},{'days':30}),
+                                          name='period',
+                                          title='period'
+        )
+        title = Paragraph(text="NYC Taxi Cab Data", width=250, height=50)
+        app.widgets.children=[title, app.date_slider]
+        app.children = [app.widgets, app.pickup_plot, app.dropoff_plot]
         return app
 
     def pickup_selector(self, obj, attrname, old, new):
         geom = new['data_geometry']
         if geom is None:
-            self.pickup_ar_plot_source.filter_url = None;
-            self.dropoff_ar_plot_source.filter_url = None;
+            self.filters.pop('pickup_latitude', None)
+            self.filters.pop('pickup_longitude', None)
+            self.filter()
             return
-        print 'PICKUP**', geom
         lxmin = min(geom['x0'], geom['x1'])
         lxmax = max(geom['x0'], geom['x1'])
         lymin = min(geom['y0'], geom['y1'])
         lymax = max(geom['y0'], geom['y1'])
-        query_dict = {}
-        query_dict['pickup_latitude'] = [lambda x : (x >= lymin) & (x <= lymax)]
-        query_dict['pickup_longitude'] = [lambda x : (x >= lxmin) & (x <= lxmax)]
-        obj = ds.query(query_dict)
-        self.pickup_ar_plot_source.filter_url = obj.data_url
-        self.dropoff_ar_plot_source.filter_url = obj.data_url
+        self.filters['pickup_latitude'] = [lymin, lymax]
+        self.filters['pickup_longitude'] = [lxmin, lxmax]
+        self._dirty = True
+        self.filter()
 
     def dropoff_selector(self, obj, attrname, old, new):
         geom = new['data_geometry']
         if geom is None:
-            self.pickup_ar_plot_source.filter_url = None;
-            self.dropoff_ar_plot_source.filter_url = None;
+            self.filters.pop('dropoff_latitude', None)
+            self.filters.pop('dropoff_longitude', None)
+            self.filter()
             return
-        print 'dropoff**', geom
         lxmin = min(geom['x0'], geom['x1'])
         lxmax = max(geom['x0'], geom['x1'])
         lymin = min(geom['y0'], geom['y1'])
         lymax = max(geom['y0'], geom['y1'])
+        self.filters['dropoff_latitude'] = [lymin, lymax]
+        self.filters['dropoff_longitude'] = [lxmin, lxmax]
+        self._dirty = True
+        self.filter()
+
+    def filter(self):
         query_dict = {}
-        query_dict['dropoff_latitude'] = [lambda x : (x >= lymin) & (x <= lymax)]
-        query_dict['dropoff_longitude'] = [lambda x : (x >= lxmin) & (x <= lxmax)]
+        def selector(minval, maxval):
+            return lambda x : (x >= minval) & (x <= maxval)
+        for k,v in self.filters.items():
+            if k in {'pickup_datetime', 'pickup_latitude',
+                     'pickup_longitude',
+                     'dropoff_latitude', 'dropoff_longitude'}:
+                minval = min(v)
+                maxval = max(v)
+                print 'RANGE', k, minval, maxval
+                query_dict[k] = [selector(minval, maxval)]
+        print 'FILTERS', self.filters
+        print query_dict
         obj = ds.query(query_dict)
         self.pickup_ar_plot_source.filter_url = obj.data_url
         self.dropoff_ar_plot_source.filter_url = obj.data_url
+
+    def date_slider_change(self, obj, attrname, old, new):
+        print 'FILTERS', self.filters
+        minval = min(new)
+        maxval = max(new)
+        if isinstance(minval, basestring):
+            minval = np.datetime64(minval, 'ns').astype('int64')
+        if isinstance(maxval, basestring):
+            maxval = np.datetime64(maxval, 'ns').astype('int64')
+        self.filters['pickup_datetime'] = [minval, maxval]
+        print 'FILTERS', self.filters
+        self._dirty = True
+        self.filter()
 
     def setup_events(self):
         if self.pickup_ar_plot_source:
             self.pickup_ar_plot_source.on_change('selector', self, 'pickup_selector')
         if self.dropoff_ar_plot_source:
             self.dropoff_ar_plot_source.on_change('selector', self, 'dropoff_selector')
-
+        if self.date_slider:
+            self.date_slider.on_change('value', self, 'date_slider_change')
 from partition import ARDataset
 ds = ARDataset()
 def get_data(pickup, local_bounds, filters):

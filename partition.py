@@ -241,10 +241,6 @@ def render(source, start, end, filters, grid_data_bounds,
         xdata = smartslice(ds1, start, end, bvector)
         ds2 = f[yfield]
         ydata = smartslice(ds2, start, end, bvector)
-        selector = (xdata >= gxmin) & (xdata <= gxmax)
-        selector = selector & (ydata >= gymin) & (ydata <=gymax)
-        xdata = xdata[selector]
-        ydata = ydata[selector]
     finally:
         f.close()
     mark = mark.astype('float64')

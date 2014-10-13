@@ -28,6 +28,9 @@ def project(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata
     ymark_shape = mark.shape[1]
     datalen = len(xdata)
     for idx in range(datalen):
+        if xdata[idx] <= xmin or xdata[idx] >=xmax or \
+           ydata[idx] <=ymin or ydata[idx]>=ymax:
+            continue
         xcoord = (xdata[idx] - xmin) / xslope
         ycoord = (ydata[idx] - ymin) / yslope
         xcoord_int = (<int> floor(xcoord))
@@ -60,7 +63,7 @@ def project(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata
                 yy1 = yy2 + c2
                 if xx1 > 0 and xx1 < xshape and xx1 > 0 and yy1 <yshape and yy1>0:
                     grid[xx1, yy1] += mark[c1, c2] * factor
-        
+
         xx = xcoord_int
         yy = yoffset
         factor = xbase * yrem
@@ -72,7 +75,7 @@ def project(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata
                 yy1 = yy2 + c2
                 if xx1 > 0 and xx1 < xshape and xx1 > 0 and yy1 <yshape and yy1>0:
                     grid[xx1, yy1] += mark[c1, c2] * factor
-        
+
         xx = xoffset
         yy = yoffset
         factor = xrem * yrem
