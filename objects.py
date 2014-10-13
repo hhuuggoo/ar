@@ -85,6 +85,10 @@ class TaxiApp(HBox):
 
     def pickup_selector(self, obj, attrname, old, new):
         geom = new['data_geometry']
+        if geom is None:
+            self.pickup_ar_plot_source.filter_url = None;
+            self.dropoff_ar_plot_source.filter_url = None;
+            return
         print 'PICKUP**', geom
         lxmin = min(geom['x0'], geom['x1'])
         lxmax = max(geom['x0'], geom['x1'])
@@ -98,7 +102,22 @@ class TaxiApp(HBox):
         self.dropoff_ar_plot_source.filter_url = obj.data_url
 
     def dropoff_selector(self, obj, attrname, old, new):
-        pass
+        geom = new['data_geometry']
+        if geom is None:
+            self.pickup_ar_plot_source.filter_url = None;
+            self.dropoff_ar_plot_source.filter_url = None;
+            return
+        print 'dropoff**', geom
+        lxmin = min(geom['x0'], geom['x1'])
+        lxmax = max(geom['x0'], geom['x1'])
+        lymin = min(geom['y0'], geom['y1'])
+        lymax = max(geom['y0'], geom['y1'])
+        query_dict = {}
+        query_dict['dropoff_latitude'] = [lambda x : (x >= lymin) & (x <= lymax)]
+        query_dict['dropoff_longitude'] = [lambda x : (x >= lxmin) & (x <= lxmax)]
+        obj = ds.query(query_dict)
+        self.pickup_ar_plot_source.filter_url = obj.data_url
+        self.dropoff_ar_plot_source.filter_url = obj.data_url
 
     def setup_events(self):
         if self.pickup_ar_plot_source:
