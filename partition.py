@@ -220,7 +220,6 @@ class ARDataset(object):
         if filters is None:
             filters = {}
         else:
-            print filters.data_url
             filters = filters.obj()
         for source, start, end in self.chunked().chunks:
             c.bc(histogram, source, start, end, filters, field, bins)

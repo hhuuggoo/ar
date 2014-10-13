@@ -67,6 +67,12 @@ class TaxiApp(HBox):
 
     def trip_distance_change(self, obj, attrname, old, new):
         geom = new;
+        if geom is None:
+            if 'trip_distance' in self.filters:
+                print 'POPPING TRIP DISTANCE'
+                self.filters.pop('trip_distance', None)
+                self.filter()
+            return
         lxmin = min(geom['x0'], geom['x1'])
         lxmax = max(geom['x0'], geom['x1'])
         self.filters['trip_distance'] = [lxmin, lxmax]
@@ -92,6 +98,12 @@ class TaxiApp(HBox):
 
     def trip_time_change(self, obj, attrname, old, new):
         geom = new;
+        if geom is None:
+            if 'trip_time' in self.filters:
+                print 'POPPING TRIP TIME'
+                self.filters.pop('trip_time', None)
+                self.filter()
+            return
         lxmin = min(geom['x0'], geom['x1'])
         lxmax = max(geom['x0'], geom['x1'])
         self.filters['trip_time'] = [lxmin, lxmax]
@@ -174,9 +186,11 @@ class TaxiApp(HBox):
             return
         geom = new
         if geom is None:
-            self.filters.pop('pickup_latitude', None)
-            self.filters.pop('pickup_longitude', None)
-            self.filter()
+            first = self.filters.pop('pickup_latitude', None)
+            second = self.filters.pop('pickup_longitude', None)
+            if first or second:
+                print 'POPPED PICKUP'
+                self.filter()
             return
         lxmin = min(geom['x0'], geom['x1'])
         lxmax = max(geom['x0'], geom['x1'])
@@ -192,9 +206,11 @@ class TaxiApp(HBox):
             return
         geom = new
         if geom is None:
-            self.filters.pop('dropoff_latitude', None)
-            self.filters.pop('dropoff_longitude', None)
-            self.filter()
+            first = self.filters.pop('dropoff_latitude', None)
+            second = self.filters.pop('dropoff_longitude', None)
+            if first or second:
+                print 'POPPED DROPOFF'
+                self.filter()
             return
         lxmin = min(geom['x0'], geom['x1'])
         lxmax = max(geom['x0'], geom['x1'])
@@ -217,9 +233,7 @@ class TaxiApp(HBox):
             }:
                 minval = min(v)
                 maxval = max(v)
-                print 'RANGE', k, minval, maxval
                 query_dict[k] = [selector(minval, maxval)]
-        print 'FILTERS', self.filters
         print query_dict
         obj = ds.query(query_dict)
         self.pickup_ar_plot_source.filter_url = obj.data_url
@@ -228,7 +242,6 @@ class TaxiApp(HBox):
         self.make_trip_time_histogram()
 
     def date_slider_change(self, obj, attrname, old, new):
-        print 'FILTERS', self.filters
         minval = min(new)
         maxval = max(new)
         if isinstance(minval, basestring):
@@ -236,7 +249,6 @@ class TaxiApp(HBox):
         if isinstance(maxval, basestring):
             maxval = np.datetime64(maxval, 'ns').astype('int64')
         self.filters['pickup_datetime'] = [minval, maxval]
-        print 'FILTERS', self.filters
         self._dirty = True
         self.filter()
 

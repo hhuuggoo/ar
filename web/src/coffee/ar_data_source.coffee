@@ -77,6 +77,7 @@ ar_data_source.main = () ->
           console.log('UPDATE');
           return @_update(column_data_source, renderer_view)
       )
+      callback = _.debounce(callback, 500);
       @listenTo(pv.x_range, 'change', callback)
       @listenTo(pv.y_range, 'change', callback)
       @listenTo(this, 'change:filter_url', callback)

@@ -110,6 +110,7 @@
             return _this._update(column_data_source, renderer_view);
           };
         })(this));
+        callback = _.debounce(callback, 500);
         this.listenTo(pv.x_range, 'change', callback);
         this.listenTo(pv.y_range, 'change', callback);
         this.listenTo(this, 'change:filter_url', callback);
