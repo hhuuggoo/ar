@@ -1,10 +1,13 @@
 import time
 import datetime as dt
 import numpy as np
+import pandas as pd
+from kitchensink import setup_client, client, do, du, dp
 
 from bokeh.objects import  ServerDataSource, Plot, ColumnDataSource
 from bokeh.widgets import HBox, VBox, VBoxForm, DateRangeSlider, Paragraph
 from bokeh.plot_object import PlotObject
+from bokeh.crossfilter.plotting import make_histogram
 from bokeh.properties import (
     Datetime, HasProps, Dict, Enum, Either, Float, Instance, Int,
     List, String, Color, Include, Bool, Tuple, Any
@@ -30,9 +33,70 @@ class TaxiApp(HBox):
     dropoff_raw_plot_source = Instance(ColumnDataSource)
     pickup_ar_plot_source = Instance(ARDataSource)
     dropoff_ar_plot_source = Instance(ARDataSource)
+    trip_distance_source = Instance(ColumnDataSource)
+    trip_time_source = Instance(ColumnDataSource)
     widgets = Instance(VBox)
     date_slider = Instance(DateRangeSlider)
     filters = Dict(String, Any)
+    trip_time_bins = np.linspace(0, 3600, 25)
+    trip_distance_bins = np.linspace(0.01, 10, 25)
+
+    def make_histogram(self, field, bins):
+        filter_url = self.pickup_ar_plot_source.filter_url
+        filters = None
+        if filter_url:
+            filters = du(filter_url)
+        return ds.histogram(field, bins, filters=filters)
+
+    def make_trip_distance_histogram(self):
+        bins = self.trip_distance_bins
+        counts = self.make_histogram('trip_distance', bins)
+        centers = pd.rolling_mean(bins, 2)[1:]
+        data={'counts': counts, 'centers': centers, 'y' : counts/2.0}
+        if self.trip_distance_source is not None:
+            self.trip_distance_source.data = data
+        else:
+            source = ColumnDataSource(data=data)
+            self.trip_distance_source = source
+            plot = make_histogram(self.trip_distance_source,
+                                  bar_width=np.mean(np.diff(centers)) * 0.7,
+                                  plot_width=300, plot_height=200, min_border=20,
+                                  tools="pan,wheel_zoom,box_zoom,select,reset")
+            plot.title = "trip distance in miles"
+            return plot
+
+    def trip_distance_change(self, obj, attrname, old, new):
+        geom = new;
+        lxmin = min(geom['x0'], geom['x1'])
+        lxmax = max(geom['x0'], geom['x1'])
+        self.filters['trip_distance'] = [lxmin, lxmax]
+        self._dirty = True
+        self.filter()
+
+    def make_trip_time_histogram(self):
+        bins = self.trip_time_bins
+        counts = self.make_histogram('trip_time_in_secs', bins)
+        centers = pd.rolling_mean(bins, 2)[1:]
+        data={'counts': counts, 'centers': centers, 'y' : counts/2.0}
+        if self.trip_time_source is not None:
+            self.trip_time_source.data = data
+        else:
+            source = ColumnDataSource(data=data)
+            self.trip_time_source = source
+            plot = make_histogram(self.trip_time_source,
+                                  bar_width=np.mean(np.diff(centers)) * 0.7,
+                                  plot_width=300, plot_height=200, min_border=20,
+                                  tools="pan,wheel_zoom,box_zoom,select,reset")
+            plot.title = "trip time in seconds"
+            return plot
+
+    def trip_time_change(self, obj, attrname, old, new):
+        geom = new;
+        lxmin = min(geom['x0'], geom['x1'])
+        lxmax = max(geom['x0'], geom['x1'])
+        self.filters['trip_time'] = [lxmin, lxmax]
+        self._dirty = True
+        self.filter()
 
     @classmethod
     def create(cls):
@@ -84,6 +148,8 @@ class TaxiApp(HBox):
         app.dropoff_plot = plot
         app.dropoff_raw_plot_source = plot.select({'type' : ColumnDataSource})[0]
 
+        histogram1 = app.make_trip_distance_histogram()
+        histogram2 = app.make_trip_time_histogram()
         app.widgets = VBoxForm()
         app.date_slider = DateRangeSlider(value=(dt.datetime(2012, 1, 1),
                                                  dt.datetime(2013, 1, 28)),
@@ -95,12 +161,18 @@ class TaxiApp(HBox):
                                           title='period'
         )
         title = Paragraph(text="NYC Taxi Cab Data", width=250, height=50)
-        app.widgets.children=[title, app.date_slider]
+        app.widgets.children=[title, app.date_slider,
+                              histogram1,
+                              Paragraph(text="",
+                                        width=250, height=50),
+                              histogram2]
         app.children = [app.widgets, app.pickup_plot, app.dropoff_plot]
         return app
 
     def pickup_selector(self, obj, attrname, old, new):
-        geom = new['data_geometry']
+        if attrname != 'data_geometry':
+            return
+        geom = new
         if geom is None:
             self.filters.pop('pickup_latitude', None)
             self.filters.pop('pickup_longitude', None)
@@ -116,7 +188,9 @@ class TaxiApp(HBox):
         self.filter()
 
     def dropoff_selector(self, obj, attrname, old, new):
-        geom = new['data_geometry']
+        if attrname != 'data_geometry':
+            return
+        geom = new
         if geom is None:
             self.filters.pop('dropoff_latitude', None)
             self.filters.pop('dropoff_longitude', None)
@@ -138,7 +212,9 @@ class TaxiApp(HBox):
         for k,v in self.filters.items():
             if k in {'pickup_datetime', 'pickup_latitude',
                      'pickup_longitude',
-                     'dropoff_latitude', 'dropoff_longitude'}:
+                     'dropoff_latitude', 'dropoff_longitude',
+                     'trip_distance', 'trip_time_in_secs',
+            }:
                 minval = min(v)
                 maxval = max(v)
                 print 'RANGE', k, minval, maxval
@@ -148,6 +224,8 @@ class TaxiApp(HBox):
         obj = ds.query(query_dict)
         self.pickup_ar_plot_source.filter_url = obj.data_url
         self.dropoff_ar_plot_source.filter_url = obj.data_url
+        self.make_trip_distance_histogram()
+        self.make_trip_time_histogram()
 
     def date_slider_change(self, obj, attrname, old, new):
         print 'FILTERS', self.filters
@@ -163,12 +241,21 @@ class TaxiApp(HBox):
         self.filter()
 
     def setup_events(self):
-        if self.pickup_ar_plot_source:
-            self.pickup_ar_plot_source.on_change('selector', self, 'pickup_selector')
-        if self.dropoff_ar_plot_source:
-            self.dropoff_ar_plot_source.on_change('selector', self, 'dropoff_selector')
+        if self.pickup_raw_plot_source:
+            self.pickup_raw_plot_source.on_change('data_geometry',
+                                                  self, 'pickup_selector')
+        if self.dropoff_raw_plot_source:
+            self.dropoff_raw_plot_source.on_change('data_geometry',
+                                                   self, 'dropoff_selector')
         if self.date_slider:
             self.date_slider.on_change('value', self, 'date_slider_change')
+        if self.trip_distance_source:
+            self.trip_distance_source.on_change('data_geometry', self,
+                                                'trip_distance_change')
+        if self.trip_time_source:
+            self.trip_time_source.on_change('data_geometry', self,
+                                            'trip_time_change')
+
 from partition import ARDataset
 ds = ARDataset()
 def get_data(pickup, local_bounds, filters):

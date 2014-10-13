@@ -214,6 +214,36 @@ class ARDataset(object):
         c.bc(aggregate, results, grid_shape)
         c.execute()
         return c.br()[0]
+
+    def histogram(self, field, bins, filters=None):
+        c = client()
+        if filters is None:
+            filters = {}
+        else:
+            print filters.data_url
+            filters = filters.obj()
+        for source, start, end in self.chunked().chunks:
+            c.bc(histogram, source, start, end, filters, field, bins)
+        c.execute()
+        results = c.br()
+        counts = [x[0] for x in results]
+        return np.array(counts).sum(axis=0)
+
+def histogram(source, start, end, filters, field, bins):
+    boolean_obj = filters.get((source.data_url, start, end))
+    if boolean_obj is not None:
+        bvector = boolean_obj.obj()
+    else:
+        bvector = None
+    path = source.local_path()
+    f = h5py.File(path, 'r')
+    try:
+        ds = f[field]
+        data = smartslice(ds, start, end, bvector)
+    finally:
+        f.close()
+    return np.histogram(data, bins)
+
 def aggregate(results, grid_shape):
     bigdata = np.zeros(grid_shape)
     for source in results:

@@ -120,25 +120,6 @@
             }
           };
         })(this));
-        this.listenTo(column_data_source, 'select', (function(_this) {
-          return function() {
-            var bounds, geom, x_bounds, xx, y_bounds, yy;
-            geom = column_data_source.get('selector').get('geometry');
-            xx = [geom['vx0'], geom['vx1']];
-            yy = [geom['vy0'], geom['vy1']];
-            bounds = pv.map_from_screen(xx, yy, 'data');
-            x_bounds = bounds[0];
-            y_bounds = bounds[1];
-            return _this.save('selector', {
-              'data_geometry': {
-                'x0': x_bounds[0],
-                'x1': x_bounds[1],
-                'y0': y_bounds[0],
-                'y1': y_bounds[1]
-              }
-            });
-          };
-        })(this));
         return this.listenTo(column_data_source, 'deselect', (function(_this) {
           return function() {
             return _this.save('selector', {
