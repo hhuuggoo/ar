@@ -64,7 +64,7 @@ ar_data_source.main = () ->
           console.log('UPDATE HIST');
           return @_update(column_data_source, renderer_view)
       )
-      callback = _.debounce(callback, 500);
+      callback = _.debounce(callback, 100);
       @listenTo(this, 'change:filter_url', callback)
       ## HACK
       @listenTo(column_data_source, 'change:data', () =>
@@ -96,13 +96,17 @@ ar_data_source.main = () ->
     initialize : (attrs, options) ->
       super(attrs, options)
       @cache = {}
+      @initial = true
     update : (column_data_source, renderer_view)  ->
-      resp = @_update(column_data_source, renderer_view, true)
-      resp.done (() =>
-        @subscribe(column_data_source, renderer_view)
+      @_update = ajax_throttle(
+        () =>
+          console.log('UPDATE');
+          return @_do_update(column_data_source, renderer_view)
       )
-    _update : (column_data_source, renderer_view, initial) ->
-      if not initial
+      @_update = _.debounce(@_update, 100);
+      resp = @_update(column_data_source, renderer_view)
+    _do_update : (column_data_source, renderer_view) ->
+      if not @initial
         xmin = renderer_view.plot_view.x_range.get('start')
         xmax = renderer_view.plot_view.x_range.get('end')
         ymin = renderer_view.plot_view.y_range.get('start')
@@ -115,10 +119,11 @@ ar_data_source.main = () ->
         }
       else
         data = {}
+      url = @get('data_url')
       data['filter_url'] = @get('filter_url')
       resp = $.ajax(
         dataType: 'json'
-        url : @get('data_url')
+        url : url
         data : JSON.stringify(data)
         xhrField :
           withCredentials : true
@@ -126,18 +131,15 @@ ar_data_source.main = () ->
         contentType : 'application/json'
       ).done((data) =>
         @set_data(data, column_data_source)
+        if @initial
+          @subscribe(column_data_source, renderer_view)
+        @initial = false
       )
     subscribe : (column_data_source, renderer_view) ->
       pv = renderer_view.plot_view
-      callback = ajax_throttle(
-        () =>
-          console.log('UPDATE');
-          return @_update(column_data_source, renderer_view)
-      )
-      callback = _.debounce(callback, 500);
-      @listenTo(pv.x_range, 'change', callback)
-      @listenTo(pv.y_range, 'change', callback)
-      @listenTo(this, 'change:filter_url', callback)
+      @listenTo(pv.x_range, 'change', @_update)
+      @listenTo(pv.y_range, 'change', @_update)
+      @listenTo(this, 'change:filter_url', @_update)
 
       ## HACK
       @listenTo(column_data_source, 'change:data', () =>
@@ -145,6 +147,7 @@ ar_data_source.main = () ->
           column_data_source.set('data', @cache[column_data_source.id])
       )
     set_data : (data, column_data_source) ->
+      console.log('setting palette', data.palette)
       orig_data = _.clone(column_data_source.get('data'))
       _.extend(orig_data, data)
       column_data_source.set('data', orig_data)

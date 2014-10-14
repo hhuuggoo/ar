@@ -42,6 +42,14 @@ class TaxiApp(HBox):
     dropoff_raw_plot_source = Instance(ColumnDataSource)
     dropoff_ar_plot_source = Instance(ARDataSource)
 
+    pickup_comparison_plot = Instance(Plot)
+    pickup_comparison_raw_plot_source = Instance(ColumnDataSource)
+    pickup_comparison_ar_plot_source = Instance(ARDataSource)
+
+    dropoff_comparison_plot = Instance(Plot)
+    dropoff_comparison_raw_plot_source = Instance(ColumnDataSource)
+    dropoff_comparison_ar_plot_source = Instance(ARDataSource)
+
     trip_distance_source = Instance(ColumnDataSource)
     trip_time_source = Instance(ColumnDataSource)
     trip_distance_ar_source = Instance(HistogramDataSource)
@@ -55,6 +63,10 @@ class TaxiApp(HBox):
     distance_histogram = Instance(Plot)
     time_histogram = Instance(Plot)
     hour_selector = Instance(Select)
+
+    regular = Instance(HBox)
+    filtered = Instance(HBox)
+    images = Instance(VBox)
 
     def make_trip_distance_histogram(self):
         bins = self.trip_distance_bins
@@ -183,8 +195,57 @@ class TaxiApp(HBox):
                      tools="pan,wheel_zoom,box_zoom,select,reset",
                      title='pickup'
         )
+        plot.title_text_font='12pt'
         app.pickup_plot = plot
         app.pickup_raw_plot_source = plot.select({'type' : ColumnDataSource})[0]
+
+        data = ARDataSource(
+            data_url="/bokeh/taxidatavsregular/pickup/",
+            data=dict(
+                x=[0], y=[0], dw=[xmax-xmin], dh=[ymax-ymin], palette=["Greys-256"]
+            )
+        )
+        app.pickup_comparison_ar_plot_source = data
+        plot = image(source=data,
+                     image="image",
+                     x="x",
+                     y="y",
+                     dw="dw",
+                     dh="dh",
+                     plot_width=400,
+                     plot_height=600,
+                     palette='palette',
+                     x_range=[xmin, xmax], y_range=[ymin, ymax],
+                     tools="pan,wheel_zoom,box_zoom,select,reset",
+                     title='pickup comparison plot'
+        )
+        plot.title_text_font='12pt'
+        app.pickup_comparison_plot = plot
+        app.pickup_comparison_raw_plot_source = plot.select({'type' : ColumnDataSource})[0]
+        data = ARDataSource(
+            data_url="/bokeh/taxidatavsregular/dropoff/",
+            data=dict(
+                x=[0], y=[0], dw=[xmax-xmin], dh=[ymax-ymin], palette=["Greys-256"]
+            )
+        )
+        app.dropoff_comparison_ar_plot_source = data
+        plot = image(source=data,
+                     image="image",
+                     x="x",
+                     y="y",
+                     dw="dw",
+                     dh="dh",
+                     plot_width=400,
+                     plot_height=600,
+                     palette='palette',
+                     x_range=[xmin, xmax], y_range=[ymin, ymax],
+                     tools="pan,wheel_zoom,box_zoom,select,reset",
+                     title='dropoff comparison plot'
+        )
+        plot.title_text_font='12pt'
+        app.dropoff_comparison_plot = plot
+        app.dropoff_comparison_raw_plot_source = plot.select({'type' : ColumnDataSource})[0]
+
         data = ARDataSource(
             data_url="/bokeh/taxidata/dropoff/",
             data=dict(
@@ -205,6 +266,7 @@ class TaxiApp(HBox):
                      tools="pan,wheel_zoom,box_zoom,reset,select,reset",
                      title='dropoff'
         )
+        plot.title_text_font='12pt'
         app.dropoff_plot = plot
         app.dropoff_raw_plot_source = plot.select({'type' : ColumnDataSource})[0]
         app.make_trip_distance_histogram()
@@ -236,8 +298,21 @@ class TaxiApp(HBox):
                               Paragraph(text="",
                                         width=250, height=50),
                               app.time_histogram]
-        app.children = [app.widgets, app.pickup_plot, app.dropoff_plot]
+        app.images = VBox()
+        app.regular = HBox()
+        app.filtered = HBox()
+        app.regular.children = [app.pickup_plot, app.dropoff_plot]
+        app.filtered.children = [app.pickup_comparison_plot,
+                                  app.dropoff_comparison_plot]
+        app.images.children = [app.regular]
+        app.children = [app.widgets, app.images]
         return app
+
+    def set_images(self):
+        if self.pickup_ar_plot_source.filter_url:
+            self.images.children = [self.regular, self.filtered]
+        else:
+            self.images.children = [self.regular]
 
     def filter(self):
         st = time.time()
@@ -254,12 +329,24 @@ class TaxiApp(HBox):
                 minval = min(v)
                 maxval = max(v)
                 query_dict[k] = [selector(minval, maxval)]
+        if len(query_dict) == 0:
+            self.pickup_ar_plot_source.filter_url = None
+            self.dropoff_ar_plot_source.filter_url = None
+            self.trip_time_ar_source.filter_url = None
+            self.trip_distance_ar_source.filter_url = None
+            self.pickup_comparison_ar_plot_source.filter_url = None
+            self.dropoff_comparison_ar_plot_source.filter_url = None
+            self.set_images()
+            return
         print query_dict
         obj = ds.query(query_dict)
         self.pickup_ar_plot_source.filter_url = obj.data_url
         self.dropoff_ar_plot_source.filter_url = obj.data_url
         self.trip_time_ar_source.filter_url = obj.data_url
         self.trip_distance_ar_source.filter_url = obj.data_url
+        self.pickup_comparison_ar_plot_source.filter_url = obj.data_url
+        self.dropoff_comparison_ar_plot_source.filter_url = obj.data_url
+        self.set_images()
         ed = time.time()
         print 'FILTERING', ed-st
 
@@ -323,7 +410,6 @@ def get_data(pickup, local_bounds, filters):
         local_bounds, xfield, yfield, filters
     )
     data = data.T[:]
-    data = data ** 0.2
     return data
 
 trip_time_bins = np.linspace(0, 3600, 25)

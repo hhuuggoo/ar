@@ -62,11 +62,8 @@ def taxidata(pickup):
                   min(bounds[3], gbounds[3]))
     else:
         bounds = gbounds
-    # global_offset_x = xmin
-    # global_offset_y = ymin
-    # global_x_range = [xmin, xmax]
-    # global_y_range = [ymin, ymax]
     data = get_data(pickup, bounds, filters)
+    data = data ** 0.3333
     xmin, xmax, ymin, ymax = bounds
     output = dict(x=[xmin],
                   y=[ymin],
@@ -108,4 +105,55 @@ def taxidatadistancehist():
     data = get_distance_histogram(filters)
     data['y_bounds'] = [min(data['counts']), max(data['counts'])]
     result = make_json(ujson.dumps(data))
+    return result
+
+
+gbounds = ds.gbounds
+@bokeh_app.route("/bokeh/taxidatavsregular/<pickup>/", methods=['GET', 'POST'])
+def taxidatavsregular(pickup):
+    st = time.time()
+    if pickup == 'pickup':
+        pickup = True
+    else:
+        pickup = False
+    try:
+        data = request.get_json()
+    except BadRequest:
+        data = {}
+    if data.get('filter_url'):
+        filters = du(data.get('filter_url'))
+    else:
+        filters = None
+    if data and data.get('xmin'):
+        bounds = (data['xmin'], data['xmax'], data['ymin'], data['ymax'])
+        bounds = (max(bounds[0], gbounds[0]),
+                  min(bounds[1], gbounds[1]),
+                  max(bounds[2], gbounds[2]),
+                  min(bounds[3], gbounds[3]))
+    else:
+        bounds = gbounds
+    if filters:
+        unfiltered = get_data(pickup, bounds, None)
+        filtered = get_data(pickup, bounds, filters)
+        percents = np.percentile(unfiltered[unfiltered!=0], np.arange(100))
+        unfiltered = np.interp(unfiltered, percents, np.arange(100))
+        percents = np.percentile(filtered[filtered!=0], np.arange(100))
+        filtered = np.interp(filtered, percents, np.arange(100))
+        data = filtered - unfiltered
+        data[data > 0] = data[data > 0] / data.max()
+        data[data < 0] = - (data[data < 0] / data.min())
+        palette = 'seismic-256'
+    else:
+        data = get_data(pickup, bounds, None)
+        data = data ** 0.3333
+        palette = 'Greys-256'
+    xmin, xmax, ymin, ymax = bounds
+    output = dict(x=[xmin],
+                  y=[ymin],
+                  dw=[xmax-xmin],
+                  dh=[ymax-ymin],
+                  palette=[palette])
+    print output
+    output['image'] = [data.tolist()]
+    result = make_json(ujson.dumps(output))
     return result

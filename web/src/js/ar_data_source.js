@@ -97,7 +97,7 @@
             return _this._update(column_data_source, renderer_view);
           };
         })(this));
-        callback = _.debounce(callback, 500);
+        callback = _.debounce(callback, 100);
         this.listenTo(this, 'change:filter_url', callback);
         return this.listenTo(column_data_source, 'change:data', (function(_this) {
           return function() {
@@ -157,22 +157,25 @@
 
       ARDataSource.prototype.initialize = function(attrs, options) {
         ARDataSource.__super__.initialize.call(this, attrs, options);
-        return this.cache = {};
+        this.cache = {};
+        return this.initial = true;
       };
 
       ARDataSource.prototype.update = function(column_data_source, renderer_view) {
         var resp;
-        resp = this._update(column_data_source, renderer_view, true);
-        return resp.done(((function(_this) {
+        this._update = ajax_throttle((function(_this) {
           return function() {
-            return _this.subscribe(column_data_source, renderer_view);
+            console.log('UPDATE');
+            return _this._do_update(column_data_source, renderer_view);
           };
-        })(this)));
+        })(this));
+        this._update = _.debounce(this._update, 100);
+        return resp = this._update(column_data_source, renderer_view);
       };
 
-      ARDataSource.prototype._update = function(column_data_source, renderer_view, initial) {
-        var data, resp, xmax, xmin, ymax, ymin;
-        if (!initial) {
+      ARDataSource.prototype._do_update = function(column_data_source, renderer_view) {
+        var data, resp, url, xmax, xmin, ymax, ymin;
+        if (!this.initial) {
           xmin = renderer_view.plot_view.x_range.get('start');
           xmax = renderer_view.plot_view.x_range.get('end');
           ymin = renderer_view.plot_view.y_range.get('start');
@@ -186,10 +189,11 @@
         } else {
           data = {};
         }
+        url = this.get('data_url');
         data['filter_url'] = this.get('filter_url');
         return resp = $.ajax({
           dataType: 'json',
-          url: this.get('data_url'),
+          url: url,
           data: JSON.stringify(data),
           xhrField: {
             withCredentials: true
@@ -198,24 +202,21 @@
           contentType: 'application/json'
         }).done((function(_this) {
           return function(data) {
-            return _this.set_data(data, column_data_source);
+            _this.set_data(data, column_data_source);
+            if (_this.initial) {
+              _this.subscribe(column_data_source, renderer_view);
+            }
+            return _this.initial = false;
           };
         })(this));
       };
 
       ARDataSource.prototype.subscribe = function(column_data_source, renderer_view) {
-        var callback, pv;
+        var pv;
         pv = renderer_view.plot_view;
-        callback = ajax_throttle((function(_this) {
-          return function() {
-            console.log('UPDATE');
-            return _this._update(column_data_source, renderer_view);
-          };
-        })(this));
-        callback = _.debounce(callback, 500);
-        this.listenTo(pv.x_range, 'change', callback);
-        this.listenTo(pv.y_range, 'change', callback);
-        this.listenTo(this, 'change:filter_url', callback);
+        this.listenTo(pv.x_range, 'change', this._update);
+        this.listenTo(pv.y_range, 'change', this._update);
+        this.listenTo(this, 'change:filter_url', this._update);
         return this.listenTo(column_data_source, 'change:data', (function(_this) {
           return function() {
             if (column_data_source.get('data').image.length === 0) {
@@ -227,6 +228,7 @@
 
       ARDataSource.prototype.set_data = function(data, column_data_source) {
         var orig_data;
+        console.log('setting palette', data.palette);
         orig_data = _.clone(column_data_source.get('data'));
         _.extend(orig_data, data);
         column_data_source.set('data', orig_data);
