@@ -10,7 +10,9 @@ import cython
 @cython.nonecheck(False)
 @cython.overflowcheck(False)
 @cython.cdivision(False)
-def project(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata, np.ndarray[FLOAT_t, ndim=2] grid, float xmin, float xmax, float ymin, float ymax, np.ndarray[FLOAT_t, ndim=2] mark):
+def project(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata, np.ndarray[FLOAT_t, ndim=2] grid,
+            float xmin, float xmax, float ymin, float ymax,
+            np.ndarray[FLOAT_t, ndim=2] mark):
     cdef int xshape = grid.shape[0]
     cdef int yshape = grid.shape[1]
     cdef int max_x = xshape - 1

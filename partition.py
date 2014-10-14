@@ -79,7 +79,7 @@ class ARDataset(object):
                  _no_route_data=True)
         c.execute()
         results = c.br(profile='project_profile_%s' % xfield)
-        return grid_shape, results
+        return sum(results)
 
     def query(self, query_dict):
         c = client()
@@ -192,15 +192,7 @@ def render(source, start, end, filters, grid_data_bounds,
         mark = mark.astype('float64')
         args = (xdata, ydata, grid) + grid_data_bounds + (mark,)
         fast_project(*args)
-    with timethis('saving'):
-        path = tempfile.NamedTemporaryFile().name
-        f = h5py.File(path)
-        f.create_dataset('data', data=grid, compression='lzf')
-        f.close()
-        obj = dp(path)
-        obj.save(prefix="taxi/raw/projection")
-    ed = time.time()
-    return obj
+    return grid
 
 
 if __name__ == "__main__":

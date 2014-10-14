@@ -27,13 +27,16 @@ class TaxiApp(HBox):
     extra_generated_classes = [["TaxiApp", "TaxiApp", "HBox"]]
     extra_scripts = ['/bokehjs/static/app/src/js/ar_data_source.js']
     extra_js=['window.ar_data_source.main();']
-    pickup_plot = Instance(Plot)
-    dropoff_plot = Instance(Plot)
     gbounds = (-74.05, -73.75, 40.5, 40.99)
+
+    pickup_plot = Instance(Plot)
     pickup_raw_plot_source = Instance(ColumnDataSource)
-    dropoff_raw_plot_source = Instance(ColumnDataSource)
     pickup_ar_plot_source = Instance(ARDataSource)
+
+    dropoff_plot = Instance(Plot)
+    dropoff_raw_plot_source = Instance(ColumnDataSource)
     dropoff_ar_plot_source = Instance(ARDataSource)
+
     trip_distance_source = Instance(ColumnDataSource)
     trip_time_source = Instance(ColumnDataSource)
     widgets = Instance(VBox)
@@ -273,7 +276,7 @@ class TaxiApp(HBox):
                      'pickup_longitude',
                      'dropoff_latitude', 'dropoff_longitude',
                      'trip_distance', 'trip_time_in_secs',
-                     'hour_of_day',
+                     'HOUR_of_day',
             }:
                 minval = min(v)
                 maxval = max(v)
@@ -343,14 +346,9 @@ def get_data(pickup, local_bounds, filters):
         xfield = 'dropoff_longitude'
         yfield = 'dropoff_latitude'
     st = time.time()
-    (grid_shape, results) = ds.project(
+    data = ds.project(
         local_bounds, xfield, yfield, filters
     )
-    md = time.time()
-    print 'PROJECT', md-st
-    data = ds.aggregate(results, grid_shape)
-    ed = time.time()
-    print 'GRID', ed-md
     data = data.T[:]
     data = data ** 0.2
     return data
