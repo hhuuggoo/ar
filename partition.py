@@ -72,13 +72,13 @@ class ARDataset(object):
         mark = self.mark
         grid_shape = [self.lxres, self.lyres]
         c = client()
-        st = time.time()
         for source, start, end in self.chunked().chunks:
             c.bc(render, source, start, end, filters,
-                 local_bounds, grid_shape, mark, xfield, yfield, _intermediate_results=False, _no_route_data=True)
+                 local_bounds, grid_shape, mark,
+                 xfield, yfield, _intermediate_results=False,
+                 _no_route_data=True)
         c.execute()
-        results = c.br()
-        ed = time.time()
+        results = c.br(profile='project_profile_%s' % xfield)
         return grid_shape, results
 
     def query(self, query_dict):
@@ -111,7 +111,7 @@ class ARDataset(object):
             queue_name = c.queue('default', host=k)
             c.bc(aggregate, v, grid_shape, _intermediate_results=False, _queue_name=queue_name)
         c.execute()
-        results = c.br()
+        results = c.br(profile='aggregate')
         results = [x.obj() for x in results]
         results = sum(results)
         return results
@@ -124,43 +124,35 @@ class ARDataset(object):
         else:
             filters = filters.obj()
         for source, start, end in self.chunked().chunks:
-            print 'hist', source.data_url, start, end, field
             c.bc(histogram, source, start, end, filters, field, bins, _intermediate_results=True, _no_route_data=True)
         ed = time.time()
-        print ed-st, 'OVEREAD'
         c.execute()
         return c
 
     def finish_histogram(self, results):
-        histtimes  = [x[0] for x in results]
-        loadingtimes  = [x[1] for x in results]
-        print 'histtime', sum(histtimes)
-        print 'loadingtimes', sum(loadingtimes)
-        counts = [x[-1][0] for x in results]
+        counts = [x[0] for x in results]
         return np.array(counts).sum(axis=0)
 
-def histogram(source, start, end, filters, field, bins):
-    st = time.time()
-    boolean_obj = filters.get((source.data_url, start, end))
-    if boolean_obj is not None:
-        bvector = boolean_obj.obj()
-    else:
-        bvector = None
-    path = source.local_path()
-    f = h5py.File(path, 'r')
-    try:
-        ds = f[field]
-        data = smartslice(ds, start, end, bvector)
+from kitchensink.admin import timethis
 
-    finally:
-        f.close()
-    ed = time.time()
-    loading = ed - st
-    st = time.time()
-    result = np.histogram(data, bins)
-    ed = time.time()
-    histtime = ed - st
-    return histtime, loading, result
+def histogram(source, start, end, filters, field, bins):
+    with timethis('loading'):
+        boolean_obj = filters.get((source.data_url, start, end))
+        if boolean_obj is not None:
+            bvector = boolean_obj.obj()
+        else:
+            bvector = None
+        path = source.local_path()
+        f = h5py.File(path, 'r')
+        try:
+            ds = f[field]
+            data = smartslice(ds, start, end, bvector)
+
+        finally:
+            f.close()
+    with timethis('histogram'):
+        result = np.histogram(data, bins)
+    return result
 
 def aggregate(results, grid_shape):
     bigdata = np.zeros(grid_shape)
@@ -173,33 +165,38 @@ def aggregate(results, grid_shape):
     return obj
 
 from fast_project import project as fast_project
+from kitchensink.admin import timethis
 def render(source, start, end, filters, grid_data_bounds,
            grid_shape, mark, xfield, yfield):
-    gxmin, gxmax, gymin, gymax = grid_data_bounds
-    grid = np.zeros(grid_shape)
-    boolean_obj = filters.get((source.data_url, start, end))
-    if boolean_obj is not None:
-        bvector = boolean_obj.obj()
-    else:
-        bvector = None
-    path = source.local_path()
-    f = h5py.File(path, 'r')
-    try:
-        ds1 = f[xfield]
-        xdata = smartslice(ds1, start, end, bvector)
-        ds2 = f[yfield]
-        ydata = smartslice(ds2, start, end, bvector)
-    finally:
+    with timethis('init'):
+        gxmin, gxmax, gymin, gymax = grid_data_bounds
+        grid = np.zeros(grid_shape)
+        boolean_obj = filters.get((source.data_url, start, end))
+        if boolean_obj is not None:
+            bvector = boolean_obj.obj()
+        else:
+            bvector = None
+        path = source.local_path()
+    with timethis('loading'):
+        f = h5py.File(path, 'r')
+        try:
+            ds1 = f[xfield]
+            xdata = smartslice(ds1, start, end, bvector)
+            ds2 = f[yfield]
+            ydata = smartslice(ds2, start, end, bvector)
+        finally:
+            f.close()
+    with timethis('project'):
+        mark = mark.astype('float64')
+        args = (xdata, ydata, grid) + grid_data_bounds + (mark,)
+        fast_project(*args)
+    with timethis('saving'):
+        path = tempfile.NamedTemporaryFile().name
+        f = h5py.File(path)
+        f.create_dataset('data', data=grid, compression='lzf')
         f.close()
-    mark = mark.astype('float64')
-    args = (xdata, ydata, grid) + grid_data_bounds + (mark,)
-    fast_project(*args)
-    path = tempfile.NamedTemporaryFile().name
-    f = h5py.File(path)
-    f.create_dataset('data', data=grid, compression='lzf')
-    f.close()
-    obj = dp(path)
-    obj.save(prefix="taxi/raw/projection")
+        obj = dp(path)
+        obj.save(prefix="taxi/raw/projection")
     ed = time.time()
     return obj
 
@@ -225,7 +222,6 @@ if __name__ == "__main__":
     )
     lxdim1, lxdim2, lydim1, lydim2 = local_indexes
     ed = time.time()
-    print ed-st
     import pylab
     grid = KSXChunkedGrid(results, grid_shape[-1])
     output = grid.get(0, grid_shape[0] - 1, 0, grid_shape[-1])

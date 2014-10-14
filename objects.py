@@ -49,8 +49,8 @@ class TaxiApp(HBox):
             filters = du(filter_url)
         c1 = ds.histogram('trip_distance', self.trip_distance_bins, filters=filters)
         c2 = ds.histogram('trip_time_in_secs', self.trip_time_bins, filters=filters)
-        hist1 = ds.finish_histogram(c1.br())
-        hist2 = ds.finish_histogram(c2.br())
+        hist1 = ds.finish_histogram(c1.br(profile='distance_histogram'))
+        hist2 = ds.finish_histogram(c2.br(profile='time_histogram'))
         ed = time.time()
         print 'COMPUTE HIST', ed-st
         return hist1, hist2

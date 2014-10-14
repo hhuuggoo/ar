@@ -34,17 +34,13 @@ def boolfilter(source, start, end, query_dict, prefilter=None):
     else:
         boolvect = prefilter.obj()
     f = h5py.File(source.local_path(), 'r')
-    print np.sum(boolvect)
     for field, operations in query_dict.items():
         ds = f[field]
         data = ds[start:end]
         for op in operations:
             val = op(data)
-            #print field, op.__name__
             result = boolvect & val
             boolvect = result
-            #print np.sum(val), np.sum(result), np.sum(boolvect)
-    print 'SUM', np.sum(boolvect)
     obj = do(boolvect)
     obj.save(prefix='index')
     return obj
@@ -83,9 +79,7 @@ class Chunked(object):
             return self._lengths
         c = client()
         if all([source.data_url in lengths for source in self.sources]):
-            print ('LENGTHS from cache')
             return [lengths[source.data_url] for source in self.sources]
-        print ('grabbing LENGTHS ')
         for source in self.sources:
             c.bc(get_length, source)
         c.execute()
