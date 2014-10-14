@@ -33,6 +33,63 @@ ar_data_source.main = () ->
         )
 
     return callback
+  class HistogramDataSource extends HasProperties
+    type: 'HistogramDataSource'
+    initialize : (attrs, options) ->
+      super(attrs, options)
+      @cache = {}
+    update : (column_data_source, renderer_view)  ->
+      resp = @_update(column_data_source, renderer_view, true)
+      resp.done (() =>
+        @subscribe(column_data_source, renderer_view)
+      )
+    _update : (column_data_source, renderer_view) ->
+      data = {}
+      data['filter_url'] = @get('filter_url')
+      resp = $.ajax(
+        dataType: 'json'
+        url : @get('data_url')
+        data : JSON.stringify(data)
+        xhrField :
+          withCredentials : true
+        method : 'POST'
+        contentType : 'application/json'
+      ).done((data) =>
+        @set_data(data, column_data_source, renderer_view)
+      )
+    subscribe : (column_data_source, renderer_view) ->
+      pv = renderer_view.plot_view
+      callback = ajax_throttle(
+        () =>
+          console.log('UPDATE HIST');
+          return @_update(column_data_source, renderer_view)
+      )
+      callback = _.debounce(callback, 500);
+      @listenTo(this, 'change:filter_url', callback)
+      ## HACK
+      @listenTo(column_data_source, 'change:data', () =>
+        if column_data_source.get('data').counts.length == 0
+          column_data_source.set('data', @cache[column_data_source.id])
+      )
+    set_data : (data, column_data_source, renderer_view) ->
+      if data.y_bounds?
+        y_bounds = data.y_bounds
+        delete data['y_bounds']
+        renderer_view.plot_view.y_range.set({
+          'start' : y_bounds[0],
+          'end' : y_bounds[1],
+        })
+      orig_data = _.clone(column_data_source.get('data'))
+      _.extend(orig_data, data)
+      column_data_source.set('data', orig_data)
+      @cache[column_data_source.id] = orig_data
+  class HistogramDataSources extends Backbone.Collection
+    model: HistogramDataSource
+    defaults:
+      url : ""
+      expr : null
+  coll = new HistogramDataSources
+  Bokeh.Collections.register("HistogramDataSource", coll)
 
   class ARDataSource extends HasProperties
     type: 'ARDataSource'
@@ -86,21 +143,6 @@ ar_data_source.main = () ->
       @listenTo(column_data_source, 'change:data', () =>
         if column_data_source.get('data').image.length == 0
           column_data_source.set('data', @cache[column_data_source.id])
-      )
-      # @listenTo(column_data_source, 'select', () =>
-      #   geom = column_data_source.get('selector').get('geometry')
-      #   xx = [geom['vx0'], geom['vx1']]
-      #   yy = [geom['vy0'], geom['vy1']]
-      #   bounds = pv.map_from_screen(xx, yy, 'data')
-      #   x_bounds = bounds[0]
-      #   y_bounds = bounds[1]
-      #   @save('selector', {'data_geometry' : {
-      #     'x0' : x_bounds[0], 'x1' : x_bounds[1],
-      #     'y0' : y_bounds[0], 'y1' : y_bounds[1]
-      #   }})
-      # )
-      @listenTo(column_data_source, 'deselect', () =>
-        @save('selector', {'data_geometry' : null})
       )
     set_data : (data, column_data_source) ->
       orig_data = _.clone(column_data_source.get('data'))

@@ -16,7 +16,8 @@ from bokeh.server.utils.plugins import object_page
 from bokeh.server.views import make_json
 import ujson
 
-from objects import AjaxDataSource, TaxiApp, ARDataSource, ds, get_data
+from objects import (AjaxDataSource, TaxiApp, ARDataSource, ds, get_data,
+                     get_time_histogram, get_distance_histogram)
 _templates_path = join(abspath(split(__file__)[0]), "templates")
 _web_path = join(abspath(split(__file__)[0]), "web")
 
@@ -75,4 +76,36 @@ def taxidata(pickup):
     print output
     output['image'] = [data.tolist()]
     result = make_json(ujson.dumps(output))
+    return result
+
+@bokeh_app.route("/bokeh/taxidata/timehist/", methods=['GET', 'POST'])
+def taxidatatimehist():
+    try:
+        data = request.get_json()
+    except BadRequest:
+        data = {}
+    if data.get('filter_url'):
+        filters = du(data.get('filter_url'))
+    else:
+        filters = None
+    print 'HIST', filters
+    data = get_time_histogram(filters)
+    data['y_bounds'] = [min(data['counts']), max(data['counts'])]
+    result = make_json(ujson.dumps(data))
+    return result
+
+@bokeh_app.route("/bokeh/taxidata/distancehist/", methods=['GET', 'POST'])
+def taxidatadistancehist():
+    try:
+        data = request.get_json()
+    except BadRequest:
+        data = {}
+    if data.get('filter_url'):
+        filters = du(data.get('filter_url'))
+    else:
+        filters = None
+    print 'HIST', filters
+    data = get_distance_histogram(filters)
+    data['y_bounds'] = [min(data['counts']), max(data['counts'])]
+    result = make_json(ujson.dumps(data))
     return result

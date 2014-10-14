@@ -8,7 +8,7 @@
   ar_data_source = window.ar_data_source;
 
   ar_data_source.main = function() {
-    var ARDataSource, ARDataSources, Backbone, HasProperties, Range1d, ajax_throttle, coll, logger, _;
+    var ARDataSource, ARDataSources, Backbone, HasProperties, HistogramDataSource, HistogramDataSources, Range1d, ajax_throttle, coll, logger, _;
     _ = Bokeh._;
     logger = Bokeh.logger;
     Backbone = Bokeh.Backbone;
@@ -44,6 +44,108 @@
       };
       return callback;
     };
+    HistogramDataSource = (function(_super) {
+      __extends(HistogramDataSource, _super);
+
+      function HistogramDataSource() {
+        return HistogramDataSource.__super__.constructor.apply(this, arguments);
+      }
+
+      HistogramDataSource.prototype.type = 'HistogramDataSource';
+
+      HistogramDataSource.prototype.initialize = function(attrs, options) {
+        HistogramDataSource.__super__.initialize.call(this, attrs, options);
+        return this.cache = {};
+      };
+
+      HistogramDataSource.prototype.update = function(column_data_source, renderer_view) {
+        var resp;
+        resp = this._update(column_data_source, renderer_view, true);
+        return resp.done(((function(_this) {
+          return function() {
+            return _this.subscribe(column_data_source, renderer_view);
+          };
+        })(this)));
+      };
+
+      HistogramDataSource.prototype._update = function(column_data_source, renderer_view) {
+        var data, resp;
+        data = {};
+        data['filter_url'] = this.get('filter_url');
+        return resp = $.ajax({
+          dataType: 'json',
+          url: this.get('data_url'),
+          data: JSON.stringify(data),
+          xhrField: {
+            withCredentials: true
+          },
+          method: 'POST',
+          contentType: 'application/json'
+        }).done((function(_this) {
+          return function(data) {
+            return _this.set_data(data, column_data_source, renderer_view);
+          };
+        })(this));
+      };
+
+      HistogramDataSource.prototype.subscribe = function(column_data_source, renderer_view) {
+        var callback, pv;
+        pv = renderer_view.plot_view;
+        callback = ajax_throttle((function(_this) {
+          return function() {
+            console.log('UPDATE HIST');
+            return _this._update(column_data_source, renderer_view);
+          };
+        })(this));
+        callback = _.debounce(callback, 500);
+        this.listenTo(this, 'change:filter_url', callback);
+        return this.listenTo(column_data_source, 'change:data', (function(_this) {
+          return function() {
+            if (column_data_source.get('data').counts.length === 0) {
+              return column_data_source.set('data', _this.cache[column_data_source.id]);
+            }
+          };
+        })(this));
+      };
+
+      HistogramDataSource.prototype.set_data = function(data, column_data_source, renderer_view) {
+        var orig_data, y_bounds;
+        if (data.y_bounds != null) {
+          y_bounds = data.y_bounds;
+          delete data['y_bounds'];
+          renderer_view.plot_view.y_range.set({
+            'start': y_bounds[0],
+            'end': y_bounds[1]
+          });
+        }
+        orig_data = _.clone(column_data_source.get('data'));
+        _.extend(orig_data, data);
+        column_data_source.set('data', orig_data);
+        return this.cache[column_data_source.id] = orig_data;
+      };
+
+      return HistogramDataSource;
+
+    })(HasProperties);
+    HistogramDataSources = (function(_super) {
+      __extends(HistogramDataSources, _super);
+
+      function HistogramDataSources() {
+        return HistogramDataSources.__super__.constructor.apply(this, arguments);
+      }
+
+      HistogramDataSources.prototype.model = HistogramDataSource;
+
+      HistogramDataSources.prototype.defaults = {
+        url: "",
+        expr: null
+      };
+
+      return HistogramDataSources;
+
+    })(Backbone.Collection);
+    coll = new HistogramDataSources;
+    Bokeh.Collections.register("HistogramDataSource", coll);
     ARDataSource = (function(_super) {
       __extends(ARDataSource, _super);
 
@@ -114,18 +216,11 @@
         this.listenTo(pv.x_range, 'change', callback);
         this.listenTo(pv.y_range, 'change', callback);
         this.listenTo(this, 'change:filter_url', callback);
-        this.listenTo(column_data_source, 'change:data', (function(_this) {
+        return this.listenTo(column_data_source, 'change:data', (function(_this) {
           return function() {
             if (column_data_source.get('data').image.length === 0) {
               return column_data_source.set('data', _this.cache[column_data_source.id]);
             }
-          };
-        })(this));
-        return this.listenTo(column_data_source, 'deselect', (function(_this) {
-          return function() {
-            return _this.save('selector', {
-              'data_geometry': null
-            });
           };
         })(this));
       };

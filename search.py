@@ -101,7 +101,7 @@ class Chunked(object):
         print len(self._chunks), "numchunks"
         return self._chunks
 
-    def get_chunks(self, chunksize=3000000):
+    def get_chunks(self, chunksize=2000000):
         for source, length in zip(self.sources, self.lengths):
             c = chunks(length, target=chunksize)
             for start, end in c:

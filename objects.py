@@ -9,6 +9,8 @@ from bokeh.widgets import HBox, VBox, VBoxForm, DateRangeSlider, Paragraph, Sele
 
 from bokeh.plot_object import PlotObject
 from bokeh.crossfilter.plotting import make_histogram
+from bokeh.plotting import figure, hold, rect
+from bokeh.plotting_helpers import _get_select_tool
 from bokeh.properties import (
     Datetime, HasProps, Dict, Enum, Either, Float, Instance, Int,
     List, String, Color, Include, Bool, Tuple, Any
@@ -19,7 +21,10 @@ class AjaxDataSource(ServerDataSource):
     url = String()
 
 class ARDataSource(ServerDataSource):
-    selector = Dict(String, Any)
+    url = String()
+    filter_url = String()
+
+class HistogramDataSource(ServerDataSource):
     url = String()
     filter_url = String()
 
@@ -39,6 +44,9 @@ class TaxiApp(HBox):
 
     trip_distance_source = Instance(ColumnDataSource)
     trip_time_source = Instance(ColumnDataSource)
+    trip_distance_ar_source = Instance(HistogramDataSource)
+    trip_time_ar_source = Instance(HistogramDataSource)
+
     widgets = Instance(VBox)
     date_slider = Instance(DateRangeSlider)
     filters = Dict(String, Any)
@@ -48,53 +56,59 @@ class TaxiApp(HBox):
     time_histogram = Instance(Plot)
     hour_selector = Instance(Select)
 
-    def compute_histograms(self):
-        st = time.time()
-        filter_url = self.pickup_ar_plot_source.filter_url
-        filters = None
-        if filter_url:
-            filters = du(filter_url)
-        c1 = ds.histogram('trip_distance', self.trip_distance_bins, filters=filters)
-        c2 = ds.histogram('trip_time_in_secs', self.trip_time_bins, filters=filters)
-        hist1 = ds.finish_histogram(c1.br(profile='distance_histogram'))
-        hist2 = ds.finish_histogram(c2.br(profile='time_histogram'))
-        ed = time.time()
-        print 'COMPUTE HIST', ed-st
-        return hist1, hist2
-
-    def make_trip_distance_histogram(self, counts):
+    def make_trip_distance_histogram(self):
         bins = self.trip_distance_bins
         centers = pd.rolling_mean(bins, 2)[1:]
-        data={'counts': counts.tolist(), 'centers': centers.tolist(), 'y' : (counts/2.0).tolist()}
-        if self.trip_distance_source is not None:
-            self.trip_distance_source.data = data
-            self.distance_histogram.y_range.end = counts.max()
-        else:
-            source = ColumnDataSource(data=data)
-            self.trip_distance_source = source
-            self.distance_histogram = make_histogram(
-                self.trip_distance_source,
-                bar_width=np.mean(np.diff(centers)) * 0.7,
-                plot_width=300, plot_height=200, min_border=20,
-                tools="pan,wheel_zoom,box_zoom,select,reset")
-            self.distance_histogram.title = "trip distance in miles"
+        figure(title="trip distance in miles",
+               title_text_font='12pt',
+               plot_width=300,
+               plot_height=200,
+               x_range=[bins[0], bins[-1]],
+               y_range=[0, 1],
+               tools="pan,wheel_zoom,box_zoom,select,reset"
+        )
+        source = HistogramDataSource(
+            data_url="/bokeh/taxidata/distancehist/",
+        )
+        hold()
+        plot = rect("centers", "y", np.mean(np.diff(centers)) * 0.7, "counts",
+                    source=source)
+        self.trip_distance_source = plot.select({'type' : ColumnDataSource})[0]
+        self.trip_distance_ar_source = source
+        plot.min_border=0
+        plot.h_symmetry=False
+        plot.v_symmetry=False
+        select_tool = _get_select_tool(plot)
+        if select_tool:
+            select_tool.dimensions = ['width']
+        self.distance_histogram = plot
 
-    def make_trip_time_histogram(self, counts):
+    def make_trip_time_histogram(self):
         bins = self.trip_time_bins
         centers = pd.rolling_mean(bins, 2)[1:]
-        data={'counts': counts.tolist(), 'centers': centers.tolist(), 'y' : (counts/2.0).tolist()}
-        if self.trip_time_source is not None:
-            self.trip_time_source.data = data
-            self.time_histogram.y_range.end = counts.max()
-        else:
-            source = ColumnDataSource(data=data)
-            self.trip_time_source = source
-            self.time_histogram = make_histogram(
-                self.trip_time_source,
-                bar_width=np.mean(np.diff(centers)) * 0.7,
-                plot_width=300, plot_height=200, min_border=20,
-                tools="pan,wheel_zoom,box_zoom,select,reset")
-            self.time_histogram.title = "trip time in seconds"
+        figure(title="trip time in secs",
+               title_text_font='12pt',
+               plot_width=300,
+               plot_height=200,
+               x_range=[bins[0], bins[-1]],
+               y_range=[0, 1],
+               tools="pan,wheel_zoom,box_zoom,select,reset"
+        )
+        source = HistogramDataSource(
+            data_url="/bokeh/taxidata/timehist/",
+        )
+        hold()
+        plot = rect("centers", "y", np.mean(np.diff(centers)) * 0.7, "counts",
+                    source=source)
+        self.trip_time_source = plot.select({'type' : ColumnDataSource})[0]
+        self.trip_time_ar_source = source
+        plot.min_border=0
+        plot.h_symmetry=False
+        plot.v_symmetry=False
+        select_tool = _get_select_tool(plot)
+        if select_tool:
+            select_tool.dimensions = ['width']
+        self.time_histogram = plot
 
     def update_filters(self, obj, attrname, old, new):
         ##hack - only call this once per req/rep cycle
@@ -102,12 +116,12 @@ class TaxiApp(HBox):
         if hasattr(request, 'filters_updated'):
             return
         if not self.trip_time_source.data_geometry:
-            self.filters.pop('trip_time', None)
+            self.filters.pop('trip_time_in_secs', None)
         else:
             geom = self.trip_time_source.data_geometry
             lxmin = min(geom['x0'], geom['x1'])
             lxmax = max(geom['x0'], geom['x1'])
-            self.filters['trip_time'] = [lxmin, lxmax]
+            self.filters['trip_time_in_secs'] = [lxmin, lxmax]
         if not self.trip_distance_source.data_geometry:
             self.filters.pop('trip_distance', None)
         else:
@@ -193,9 +207,8 @@ class TaxiApp(HBox):
         )
         app.dropoff_plot = plot
         app.dropoff_raw_plot_source = plot.select({'type' : ColumnDataSource})[0]
-        hist1, hist2 = app.compute_histograms()
-        app.make_trip_distance_histogram(hist1)
-        app.make_trip_time_histogram(hist2)
+        app.make_trip_distance_histogram()
+        app.make_trip_time_histogram()
         app.widgets = VBoxForm()
         app.date_slider = DateRangeSlider(value=(dt.datetime(2012, 1, 1),
                                                  dt.datetime(2013, 1, 28)),
@@ -226,46 +239,6 @@ class TaxiApp(HBox):
         app.children = [app.widgets, app.pickup_plot, app.dropoff_plot]
         return app
 
-    def pickup_selector(self, obj, attrname, old, new):
-        if attrname != 'data_geometry':
-            return
-        geom = new
-        if geom is None:
-            first = self.filters.pop('pickup_latitude', None)
-            second = self.filters.pop('pickup_longitude', None)
-            if first or second:
-                print 'POPPED PICKUP'
-                self.filter()
-            return
-        lxmin = min(geom['x0'], geom['x1'])
-        lxmax = max(geom['x0'], geom['x1'])
-        lymin = min(geom['y0'], geom['y1'])
-        lymax = max(geom['y0'], geom['y1'])
-        self.filters['pickup_latitude'] = [lymin, lymax]
-        self.filters['pickup_longitude'] = [lxmin, lxmax]
-        self._dirty = True
-        self.filter()
-
-    def dropoff_selector(self, obj, attrname, old, new):
-        if attrname != 'data_geometry':
-            return
-        geom = new
-        if geom is None:
-            first = self.filters.pop('dropoff_latitude', None)
-            second = self.filters.pop('dropoff_longitude', None)
-            if first or second:
-                print 'POPPED DROPOFF'
-                self.filter()
-            return
-        lxmin = min(geom['x0'], geom['x1'])
-        lxmax = max(geom['x0'], geom['x1'])
-        lymin = min(geom['y0'], geom['y1'])
-        lymax = max(geom['y0'], geom['y1'])
-        self.filters['dropoff_latitude'] = [lymin, lymax]
-        self.filters['dropoff_longitude'] = [lxmin, lxmax]
-        self._dirty = True
-        self.filter()
-
     def filter(self):
         st = time.time()
         query_dict = {}
@@ -276,7 +249,7 @@ class TaxiApp(HBox):
                      'pickup_longitude',
                      'dropoff_latitude', 'dropoff_longitude',
                      'trip_distance', 'trip_time_in_secs',
-                     'HOUR_of_day',
+                     'hour_of_day',
             }:
                 minval = min(v)
                 maxval = max(v)
@@ -285,11 +258,11 @@ class TaxiApp(HBox):
         obj = ds.query(query_dict)
         self.pickup_ar_plot_source.filter_url = obj.data_url
         self.dropoff_ar_plot_source.filter_url = obj.data_url
+        self.trip_time_ar_source.filter_url = obj.data_url
+        self.trip_distance_ar_source.filter_url = obj.data_url
         ed = time.time()
         print 'FILTERING', ed-st
-        hist1, hist2 = self.compute_histograms()
-        self.make_trip_distance_histogram(hist1)
-        self.make_trip_time_histogram(hist2)
+
 
 
     def date_slider_change(self, obj, attrname, old, new):
@@ -351,4 +324,24 @@ def get_data(pickup, local_bounds, filters):
     )
     data = data.T[:]
     data = data ** 0.2
+    return data
+
+trip_time_bins = np.linspace(0, 3600, 25)
+def get_time_histogram(filters):
+    c = ds.histogram('trip_time_in_secs', trip_time_bins, filters=filters)
+    counts = ds.finish_histogram(c.br(profile='time_histogram'))
+    centers = pd.rolling_mean(trip_time_bins, 2)[1:]
+    data={'counts': counts.tolist(),
+          'centers': centers.tolist(),
+          'y' : (counts/2.0).tolist()}
+    return data
+
+trip_distance_bins = np.linspace(0.01, 10, 25)
+def get_distance_histogram(filters):
+    c = ds.histogram('trip_distance', trip_distance_bins, filters=filters)
+    counts = ds.finish_histogram(c.br(profile='distance_histogram'))
+    centers = pd.rolling_mean(trip_distance_bins, 2)[1:]
+    data={'counts': counts.tolist(),
+          'centers': centers.tolist(),
+          'y' : (counts/2.0).tolist()}
     return data
