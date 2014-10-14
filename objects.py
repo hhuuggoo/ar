@@ -5,7 +5,8 @@ import pandas as pd
 from kitchensink import setup_client, client, do, du, dp
 
 from bokeh.objects import  ServerDataSource, Plot, ColumnDataSource, Range1d
-from bokeh.widgets import HBox, VBox, VBoxForm, DateRangeSlider, Paragraph
+from bokeh.widgets import HBox, VBox, VBoxForm, DateRangeSlider, Paragraph, Select
+
 from bokeh.plot_object import PlotObject
 from bokeh.crossfilter.plotting import make_histogram
 from bokeh.properties import (
@@ -42,6 +43,7 @@ class TaxiApp(HBox):
     trip_distance_bins = np.linspace(0.01, 10, 25)
     distance_histogram = Instance(Plot)
     time_histogram = Instance(Plot)
+    hour_selector = Instance(Select)
 
     def compute_histograms(self):
         st = time.time()
@@ -201,8 +203,19 @@ class TaxiApp(HBox):
                                           name='period',
                                           title='period'
         )
+        app.hour_selector = Select.create(options=["-----",
+                                                   '8am-12pm',
+                                                   '12pm-4pm',
+                                                   '4pm-8pm',
+                                                   '8pm-12am',
+                                                   '12am-4am'],
+                                          name='Hour of the Day'
+        )
         title = Paragraph(text="NYC Taxi Cab Data", width=250, height=50)
         app.widgets.children=[title, app.date_slider,
+                              Paragraph(width=250, height=10),
+                              app.hour_selector,
+                              Paragraph(width=250, height=10),
                               app.distance_histogram,
                               Paragraph(text="",
                                         width=250, height=50),
@@ -260,6 +273,7 @@ class TaxiApp(HBox):
                      'pickup_longitude',
                      'dropoff_latitude', 'dropoff_longitude',
                      'trip_distance', 'trip_time_in_secs',
+                     'hour_of_day',
             }:
                 minval = min(v)
                 maxval = max(v)
@@ -286,15 +300,33 @@ class TaxiApp(HBox):
         self._dirty = True
         self.filter()
 
+    def hour_change(self, obj, attrname, old, new):
+        if new == "8am-12pm":
+            self.filters['hour_of_day'] = [8,12]
+        elif new == "12pm-4pm":
+            self.filters['hour_of_day'] = [12,16]
+        elif new == "4pm-8pm":
+            self.filters['hour_of_day'] = [16,20]
+        elif new == "8pm-12am":
+            self.filters['hour_of_day'] = [20,24]
+        elif new == "12am-4am":
+            self.filters['hour_of_day'] = [0,4]
+        elif new == "4am-8am":
+            self.filters['hour_of_day'] = [4,8]
+        else:
+            self.filters.pop('hour_of_day')
+        self._dirty = True
+        self.filter()
+
     def setup_events(self):
+        if self.hour_selector:
+            self.hour_selector.on_change('value', self, 'hour_change')
         if self.pickup_raw_plot_source:
             self.pickup_raw_plot_source.on_change('data_geometry',
                                                   self, 'update_filters')
         if self.dropoff_raw_plot_source:
             self.dropoff_raw_plot_source.on_change('data_geometry',
                                                    self, 'update_filters')
-        if self.date_slider:
-            self.date_slider.on_change('value', self, 'date_slider_change')
         if self.trip_distance_source:
             self.trip_distance_source.on_change('data_geometry', self,
                                                 'update_filters')
