@@ -121,6 +121,8 @@ ar_data_source.main = () ->
         data = {}
       url = @get('data_url')
       data['filter_url'] = @get('filter_url')
+      st = Number(new Date())
+      console.log('ajax', st);
       resp = $.ajax(
         dataType: 'json'
         url : url
@@ -130,11 +132,14 @@ ar_data_source.main = () ->
         method : 'POST'
         contentType : 'application/json'
       ).done((data) =>
+        ed = Number(new Date())
+        console.log('ajax done', ed-st)
         @set_data(data, column_data_source)
         if @initial
           @subscribe(column_data_source, renderer_view)
         @initial = false
       )
+      return resp
     subscribe : (column_data_source, renderer_view) ->
       pv = renderer_view.plot_view
       @listenTo(pv.x_range, 'change', @_update)

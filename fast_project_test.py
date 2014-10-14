@@ -1,21 +1,19 @@
 import pandas as pd
+import time
 from fast_project import project
 import numpy as np
-
-path = "/data/taxi/trip_data_1.csv"
-
-df = pd.read_csv(path,
-                 nrows=50000,
-                 skipinitialspace=True,
-                 dtype={'store_and_fwd_flag' : 'S4'},
-                 parse_dates=['pickup_datetime', 'dropoff_datetime'],
-)
+import h5py
+path = "/home/hugo/ramdisk/big.hdf5"
+f = h5py.File(path)
+ydata = f['pickup_latitude'][:1000000]
+xdata = f['pickup_longitude'][:1000000]
+print xdata, ydata
 xmin, xmax, ymin, ymax = (-74.05, -73.75, 40.5, 40.99)
-lats = df['pickup_latitude'].values.astype('float64')
-longs = df['pickup_longitude'].values.astype('float64')
-print lats, longs
 marker = np.array([[1]]).astype('float64') #unused, but signature still has it
 
-grid = np.zeros((600,600))
-project(longs, lats, grid, xmin, xmax, ymin, ymax, marker)
+grid = np.zeros((300,300))
+st = time.time()
+project(xdata, ydata, grid, xmin, xmax, ymin, ymax, marker)
+ed = time.time()
+print ed-st
 print np.max(grid)

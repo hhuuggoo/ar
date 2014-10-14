@@ -63,7 +63,12 @@ def taxidata(pickup):
     else:
         bounds = gbounds
     data = get_data(pickup, bounds, filters)
-    data = data ** 0.3333
+    data = data ** 0.2
+    data = data - data.min()
+    data = data / data.max()
+    data = data *255
+    data =  data.astype('int64')
+
     xmin, xmax, ymin, ymax = bounds
     output = dict(x=[xmin],
                   y=[ymin],
@@ -142,10 +147,18 @@ def taxidatavsregular(pickup):
         data = filtered - unfiltered
         data[data > 0] = data[data > 0] / data.max()
         data[data < 0] = - (data[data < 0] / data.min())
+        data = data - data.min()
+        data = data / data.max()
+        data = data *255
+        data =  data.astype('int64')
         palette = 'seismic-256'
     else:
         data = get_data(pickup, bounds, None)
-        data = data ** 0.3333
+        data = data ** 0.2
+        data = data - data.min()
+        data = data / data.max()
+        data = data *255
+        data =  data.astype('int64')
         palette = 'Greys-256'
     xmin, xmax, ymin, ymax = bounds
     output = dict(x=[xmin],

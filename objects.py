@@ -15,6 +15,9 @@ from bokeh.properties import (
     Datetime, HasProps, Dict, Enum, Either, Float, Instance, Int,
     List, String, Color, Include, Bool, Tuple, Any
 )
+from partition import ARDataset
+ds = ARDataset()
+
 from bokeh.plotting import image
 
 class AjaxDataSource(ServerDataSource):
@@ -32,7 +35,7 @@ class TaxiApp(HBox):
     extra_generated_classes = [["TaxiApp", "TaxiApp", "HBox"]]
     extra_scripts = ['/bokehjs/static/app/src/js/ar_data_source.js']
     extra_js=['window.ar_data_source.main();']
-    gbounds = (-74.05, -73.75, 40.5, 40.99)
+    gbounds = ds.gbounds
 
     pickup_plot = Instance(Plot)
     pickup_raw_plot_source = Instance(ColumnDataSource)
@@ -189,7 +192,7 @@ class TaxiApp(HBox):
                      dw="dw",
                      dh="dh",
                      plot_width=400,
-                     plot_height=600,
+                     plot_height=400,
                      palette='palette',
                      x_range=[xmin, xmax], y_range=[ymin, ymax],
                      tools="pan,wheel_zoom,box_zoom,select,reset",
@@ -213,7 +216,7 @@ class TaxiApp(HBox):
                      dw="dw",
                      dh="dh",
                      plot_width=400,
-                     plot_height=600,
+                     plot_height=400,
                      palette='palette',
                      x_range=[xmin, xmax], y_range=[ymin, ymax],
                      tools="pan,wheel_zoom,box_zoom,select,reset",
@@ -236,7 +239,7 @@ class TaxiApp(HBox):
                      dw="dw",
                      dh="dh",
                      plot_width=400,
-                     plot_height=600,
+                     plot_height=400,
                      palette='palette',
                      x_range=[xmin, xmax], y_range=[ymin, ymax],
                      tools="pan,wheel_zoom,box_zoom,select,reset",
@@ -256,7 +259,7 @@ class TaxiApp(HBox):
         plot = image(source=data,
                      image="image",
                      plot_width=400,
-                     plot_height=600,
+                     plot_height=400,
                      x="x",
                      y="y",
                      dw="dw",
@@ -396,8 +399,6 @@ class TaxiApp(HBox):
         if self.trip_time_source:
             self.trip_time_source.on_change('data_geometry', self,
                                             'update_filters')
-from partition import ARDataset
-ds = ARDataset()
 def get_data(pickup, local_bounds, filters):
     if pickup:
         xfield = 'pickup_longitude'

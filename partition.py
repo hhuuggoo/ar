@@ -16,8 +16,8 @@ from search import Chunked, smartslice, boolfilter
 class ARDataset(object):
     overlap = 3
     lxres = 350.0
-    lyres = 550.0
-    gbounds = (-74.05, -73.75, 40.5, 40.99)
+    lyres = 350.0
+    gbounds = (-74.05, -73.75, 40.6, 40.9)
     scales = np.array([1, 2, 4, 8, 16, 32, 64, 128]).astype('float64')
     cache = {}
 

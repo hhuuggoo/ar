@@ -174,7 +174,7 @@
       };
 
       ARDataSource.prototype._do_update = function(column_data_source, renderer_view) {
-        var data, resp, url, xmax, xmin, ymax, ymin;
+        var data, resp, st, url, xmax, xmin, ymax, ymin;
         if (!this.initial) {
           xmin = renderer_view.plot_view.x_range.get('start');
           xmax = renderer_view.plot_view.x_range.get('end');
@@ -191,7 +191,9 @@
         }
         url = this.get('data_url');
         data['filter_url'] = this.get('filter_url');
-        return resp = $.ajax({
+        st = Number(new Date());
+        console.log('ajax', st);
+        resp = $.ajax({
           dataType: 'json',
           url: url,
           data: JSON.stringify(data),
@@ -202,6 +204,9 @@
           contentType: 'application/json'
         }).done((function(_this) {
           return function(data) {
+            var ed;
+            ed = Number(new Date());
+            console.log('ajax done', ed - st);
             _this.set_data(data, column_data_source);
             if (_this.initial) {
               _this.subscribe(column_data_source, renderer_view);
@@ -209,6 +214,7 @@
             return _this.initial = false;
           };
         })(this));
+        return resp;
       };
 
       ARDataSource.prototype.subscribe = function(column_data_source, renderer_view) {
