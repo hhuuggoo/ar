@@ -18,5 +18,3 @@ import cStringIO as StringIO
 from kitchensink import setup_client, client, do, du, dp
 from kitchensink import settings
 from search import Chunked, smartslice, boolfilter
-from render import (compute_partitions, discrete_bounds, compute_scales, circle)
-

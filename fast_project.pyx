@@ -35,56 +35,30 @@ def project(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata
         ycoord = (ydata[idx] - ymin) / yslope
         xcoord_int = (<int> floor(xcoord))
         ycoord_int = (<int> floor(ycoord))
-        xrem = xcoord - xcoord_int
-        yrem = ycoord - ycoord_int
-        xbase = 1 - xrem
-        ybase = 1 - yrem
-        xoffset = xcoord_int + 1
-        yoffset = ycoord_int + 1
-        xx = xcoord_int
-        yy = ycoord_int
-        factor = xbase * ybase
-        xx2 = xx - mark_offset_x
-        yy2 = yy - mark_offset_y
-        for c1 in range(xmark_shape):
-            for c2 in range(ymark_shape):
-                xx1 = xx2 + c1
-                yy1 = yy2 + c2
-                if xx1 > 0 and xx1 < xshape and xx1 > 0 and yy1 <yshape and yy1>0:
-                    grid[xx1, yy1] += mark[c1, c2] * factor
-        xx = xoffset
-        yy = ycoord_int
-        factor = xrem * ybase
-        xx2 = xx - mark_offset_x
-        yy2 = yy - mark_offset_y
-        for c1 in range(xmark_shape):
-            for c2 in range(ymark_shape):
-                xx1 = xx2 + c1
-                yy1 = yy2 + c2
-                if xx1 > 0 and xx1 < xshape and xx1 > 0 and yy1 <yshape and yy1>0:
-                    grid[xx1, yy1] += mark[c1, c2] * factor
+        # xrem = xcoord - xcoord_int
+        # yrem = ycoord - ycoord_int
+        # xbase = 1 - xrem
+        # ybase = 1 - yrem
+        # xoffset = xcoord_int + 1
+        # yoffset = ycoord_int + 1
 
         xx = xcoord_int
-        yy = yoffset
-        factor = xbase * yrem
-        xx2 = xx - mark_offset_x
-        yy2 = yy - mark_offset_y
-        for c1 in range(xmark_shape):
-            for c2 in range(ymark_shape):
-                xx1 = xx2 + c1
-                yy1 = yy2 + c2
-                if xx1 > 0 and xx1 < xshape and xx1 > 0 and yy1 <yshape and yy1>0:
-                    grid[xx1, yy1] += mark[c1, c2] * factor
-
-        xx = xoffset
-        yy = yoffset
-        factor = xrem * yrem
-        xx2 = xx - mark_offset_x
-        yy2 = yy - mark_offset_y
-        for c1 in range(xmark_shape):
-            for c2 in range(ymark_shape):
-                xx1 = xx2 + c1
-                yy1 = yy2 + c2
-                if xx1 > 0 and xx1 < xshape and xx1 > 0 and yy1 <yshape and yy1>0:
-                    grid[xx1, yy1] += mark[c1, c2] * factor
+        yy = ycoord_int
+        if xx > 0 and xx < xshape and xx > 0 and yy <yshape and yy>0:
+            grid[xx, yy] += 1;
+        # xx = xoffset
+        # yy = ycoord_int
+        # factor = xrem * ybase
+        # if xx > 0 and xx < xshape and xx > 0 and yy <yshape and yy>0:
+        #     grid[xx, yy] += factor
+        # xx = xcoord_int
+        # yy = yoffset
+        # factor = xbase * yrem
+        # if xx > 0 and xx < xshape and xx > 0 and yy <yshape and yy>0:
+        #     grid[xx, yy] += factor
+        # xx = xoffset
+        # yy = yoffset
+        # factor = xrem * yrem
+        # if xx > 0 and xx < xshape and xx > 0 and yy <yshape and yy>0:
+        #     grid[xx, yy] += factor
     return grid

@@ -41,18 +41,24 @@ class TaxiApp(HBox):
     trip_time_bins = np.linspace(0, 3600, 25)
     trip_distance_bins = np.linspace(0.01, 10, 25)
 
-    def make_histogram(self, field, bins):
+    def compute_histograms(self):
+        st = time.time()
         filter_url = self.pickup_ar_plot_source.filter_url
         filters = None
         if filter_url:
             filters = du(filter_url)
-        return ds.histogram(field, bins, filters=filters)
+        c1 = ds.histogram('trip_distance', self.trip_distance_bins, filters=filters)
+        c2 = ds.histogram('trip_time_in_secs', self.trip_time_bins, filters=filters)
+        hist1 = ds.finish_histogram(c1.br())
+        hist2 = ds.finish_histogram(c2.br())
+        ed = time.time()
+        print 'COMPUTE HIST', ed-st
+        return hist1, hist2
 
-    def make_trip_distance_histogram(self):
+    def make_trip_distance_histogram(self, counts):
         bins = self.trip_distance_bins
-        counts = self.make_histogram('trip_distance', bins)
         centers = pd.rolling_mean(bins, 2)[1:]
-        data={'counts': counts, 'centers': centers, 'y' : counts/2.0}
+        data={'counts': counts.tolist(), 'centers': centers.tolist(), 'y' : (counts/2.0).tolist()}
         if self.trip_distance_source is not None:
             self.trip_distance_source.data = data
         else:
@@ -79,11 +85,10 @@ class TaxiApp(HBox):
         self._dirty = True
         self.filter()
 
-    def make_trip_time_histogram(self):
+    def make_trip_time_histogram(self, counts):
         bins = self.trip_time_bins
-        counts = self.make_histogram('trip_time_in_secs', bins)
         centers = pd.rolling_mean(bins, 2)[1:]
-        data={'counts': counts, 'centers': centers, 'y' : counts/2.0}
+        data={'counts': counts.tolist(), 'centers': centers.tolist(), 'y' : (counts/2.0).tolist()}
         if self.trip_time_source is not None:
             self.trip_time_source.data = data
         else:
@@ -159,9 +164,9 @@ class TaxiApp(HBox):
         )
         app.dropoff_plot = plot
         app.dropoff_raw_plot_source = plot.select({'type' : ColumnDataSource})[0]
-
-        histogram1 = app.make_trip_distance_histogram()
-        histogram2 = app.make_trip_time_histogram()
+        hist1, hist2 = app.compute_histograms()
+        histogram1 = app.make_trip_distance_histogram(hist1)
+        histogram2 = app.make_trip_time_histogram(hist2)
         app.widgets = VBoxForm()
         app.date_slider = DateRangeSlider(value=(dt.datetime(2012, 1, 1),
                                                  dt.datetime(2013, 1, 28)),
@@ -222,6 +227,7 @@ class TaxiApp(HBox):
         self.filter()
 
     def filter(self):
+        st = time.time()
         query_dict = {}
         def selector(minval, maxval):
             return lambda x : (x >= minval) & (x <= maxval)
@@ -238,8 +244,12 @@ class TaxiApp(HBox):
         obj = ds.query(query_dict)
         self.pickup_ar_plot_source.filter_url = obj.data_url
         self.dropoff_ar_plot_source.filter_url = obj.data_url
-        self.make_trip_distance_histogram()
-        self.make_trip_time_histogram()
+        ed = time.time()
+        print 'FILTERING', ed-st
+        hist1, hist2 = self.compute_histograms()
+        self.make_trip_distance_histogram(hist1)
+        self.make_trip_time_histogram(hist2)
+
 
     def date_slider_change(self, obj, attrname, old, new):
         minval = min(new)
@@ -283,7 +293,7 @@ def get_data(pickup, local_bounds, filters):
     )
     md = time.time()
     print 'PROJECT', md-st
-    data = ds.aggregate(results, grid_shape).obj()
+    data = ds.aggregate(results, grid_shape)
     ed = time.time()
     print 'GRID', ed-md
     data = data.T[:]
