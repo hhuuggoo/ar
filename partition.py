@@ -15,8 +15,8 @@ from search import Chunked, smartslice, boolfilter
 
 class ARDataset(object):
     overlap = 3
-    lxres = 600
-    lyres = 600
+    lxres = 350.0
+    lyres = 550.0
     gbounds = (-74.05, -73.75, 40.5, 40.99)
     scales = np.array([1, 2, 4, 8, 16, 32, 64, 128]).astype('float64')
     cache = {}
@@ -87,7 +87,7 @@ class ARDataset(object):
         for source, start, end in chunked.chunks:
             c.bc(boolfilter, source, start, end, query_dict, _intermediate_results=False, _no_route_data=True)
         c.execute()
-        results = c.br()
+        results = c.br(profile='profile_query')
         output = {}
         for result, (source, start, end) in zip(results, chunked.chunks):
             output[(source.data_url, start, end)] = result
@@ -155,13 +155,15 @@ def histogram(source, start, end, filters, field, bins):
     return result
 
 def aggregate(results, grid_shape):
-    bigdata = np.zeros(grid_shape)
-    for source in results:
-        path = source.local_path()
-        data = h5py.File(path)['data']
-        bigdata += data[:,:]
-    obj = do(bigdata)
-    obj.save(prefix='taxi/aggregate')
+    with timethis('data_loading'):
+        bigdata = np.zeros(grid_shape)
+        for source in results:
+            path = source.local_path()
+            data = h5py.File(path)['data']
+            bigdata += data[:,:]
+    with timethis('saving_result'):
+        obj = do(bigdata)
+        obj.save(prefix='taxi/aggregate')
     return obj
 
 from fast_project import project as fast_project

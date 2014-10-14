@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 from kitchensink import setup_client, client, do, du, dp
 
-from bokeh.objects import  ServerDataSource, Plot, ColumnDataSource
+from bokeh.objects import  ServerDataSource, Plot, ColumnDataSource, Range1d
 from bokeh.widgets import HBox, VBox, VBoxForm, DateRangeSlider, Paragraph
 from bokeh.plot_object import PlotObject
 from bokeh.crossfilter.plotting import make_histogram
@@ -40,6 +40,8 @@ class TaxiApp(HBox):
     filters = Dict(String, Any)
     trip_time_bins = np.linspace(0, 3600, 25)
     trip_distance_bins = np.linspace(0.01, 10, 25)
+    distance_histogram = Instance(Plot)
+    time_histogram = Instance(Plot)
 
     def compute_histograms(self):
         st = time.time()
@@ -61,29 +63,16 @@ class TaxiApp(HBox):
         data={'counts': counts.tolist(), 'centers': centers.tolist(), 'y' : (counts/2.0).tolist()}
         if self.trip_distance_source is not None:
             self.trip_distance_source.data = data
+            self.distance_histogram.y_range.end = counts.max()
         else:
             source = ColumnDataSource(data=data)
             self.trip_distance_source = source
-            plot = make_histogram(self.trip_distance_source,
-                                  bar_width=np.mean(np.diff(centers)) * 0.7,
-                                  plot_width=300, plot_height=200, min_border=20,
-                                  tools="pan,wheel_zoom,box_zoom,select,reset")
-            plot.title = "trip distance in miles"
-            return plot
-
-    def trip_distance_change(self, obj, attrname, old, new):
-        geom = new;
-        if geom is None:
-            if 'trip_distance' in self.filters:
-                print 'POPPING TRIP DISTANCE'
-                self.filters.pop('trip_distance', None)
-                self.filter()
-            return
-        lxmin = min(geom['x0'], geom['x1'])
-        lxmax = max(geom['x0'], geom['x1'])
-        self.filters['trip_distance'] = [lxmin, lxmax]
-        self._dirty = True
-        self.filter()
+            self.distance_histogram = make_histogram(
+                self.trip_distance_source,
+                bar_width=np.mean(np.diff(centers)) * 0.7,
+                plot_width=300, plot_height=200, min_border=20,
+                tools="pan,wheel_zoom,box_zoom,select,reset")
+            self.distance_histogram.title = "trip distance in miles"
 
     def make_trip_time_histogram(self, counts):
         bins = self.trip_time_bins
@@ -91,28 +80,63 @@ class TaxiApp(HBox):
         data={'counts': counts.tolist(), 'centers': centers.tolist(), 'y' : (counts/2.0).tolist()}
         if self.trip_time_source is not None:
             self.trip_time_source.data = data
+            self.time_histogram.y_range.end = counts.max()
         else:
             source = ColumnDataSource(data=data)
             self.trip_time_source = source
-            plot = make_histogram(self.trip_time_source,
-                                  bar_width=np.mean(np.diff(centers)) * 0.7,
-                                  plot_width=300, plot_height=200, min_border=20,
-                                  tools="pan,wheel_zoom,box_zoom,select,reset")
-            plot.title = "trip time in seconds"
-            return plot
+            self.time_histogram = make_histogram(
+                self.trip_time_source,
+                bar_width=np.mean(np.diff(centers)) * 0.7,
+                plot_width=300, plot_height=200, min_border=20,
+                tools="pan,wheel_zoom,box_zoom,select,reset")
+            self.time_histogram.title = "trip time in seconds"
 
-    def trip_time_change(self, obj, attrname, old, new):
-        geom = new;
-        if geom is None:
-            if 'trip_time' in self.filters:
-                print 'POPPING TRIP TIME'
-                self.filters.pop('trip_time', None)
-                self.filter()
+    def update_filters(self, obj, attrname, old, new):
+        ##hack - only call this once per req/rep cycle
+        from flask import request
+        if hasattr(request, 'filters_updated'):
             return
-        lxmin = min(geom['x0'], geom['x1'])
-        lxmax = max(geom['x0'], geom['x1'])
-        self.filters['trip_time'] = [lxmin, lxmax]
+        if not self.trip_time_source.data_geometry:
+            self.filters.pop('trip_time', None)
+        else:
+            geom = self.trip_time_source.data_geometry
+            lxmin = min(geom['x0'], geom['x1'])
+            lxmax = max(geom['x0'], geom['x1'])
+            self.filters['trip_time'] = [lxmin, lxmax]
+        if not self.trip_distance_source.data_geometry:
+            self.filters.pop('trip_distance', None)
+        else:
+            geom = self.trip_distance_source.data_geometry
+            lxmin = min(geom['x0'], geom['x1'])
+            lxmax = max(geom['x0'], geom['x1'])
+            self.filters['trip_distance'] = [lxmin, lxmax]
+        if not self.pickup_raw_plot_source.data_geometry:
+            self.filters.pop('pickup_latitude', None)
+            self.filters.pop('pickup_longitude', None)
+        else:
+            geom = self.pickup_raw_plot_source.data_geometry
+            lxmin = min(geom['x0'], geom['x1'])
+            lxmax = max(geom['x0'], geom['x1'])
+            lymin = min(geom['y0'], geom['y1'])
+            lymax = max(geom['y0'], geom['y1'])
+            self.filters['pickup_latitude'] = [lymin, lymax]
+            self.filters['pickup_longitude'] = [lxmin, lxmax]
+        if not self.dropoff_raw_plot_source.data_geometry:
+            self.filters.pop('dropoff_latitude', None)
+            self.filters.pop('dropoff_longitude', None)
+        else:
+            geom = self.dropoff_raw_plot_source.data_geometry
+            lxmin = min(geom['x0'], geom['x1'])
+            lxmax = max(geom['x0'], geom['x1'])
+            lymin = min(geom['y0'], geom['y1'])
+            lymax = max(geom['y0'], geom['y1'])
+            self.filters['dropoff_latitude'] = [lymin, lymax]
+            self.filters['dropoff_longitude'] = [lxmin, lxmax]
         self._dirty = True
+        try:
+            request.filters_updated = True
+        except RuntimeError:
+            pass
         self.filter()
 
     @classmethod
@@ -165,8 +189,8 @@ class TaxiApp(HBox):
         app.dropoff_plot = plot
         app.dropoff_raw_plot_source = plot.select({'type' : ColumnDataSource})[0]
         hist1, hist2 = app.compute_histograms()
-        histogram1 = app.make_trip_distance_histogram(hist1)
-        histogram2 = app.make_trip_time_histogram(hist2)
+        app.make_trip_distance_histogram(hist1)
+        app.make_trip_time_histogram(hist2)
         app.widgets = VBoxForm()
         app.date_slider = DateRangeSlider(value=(dt.datetime(2012, 1, 1),
                                                  dt.datetime(2013, 1, 28)),
@@ -179,10 +203,10 @@ class TaxiApp(HBox):
         )
         title = Paragraph(text="NYC Taxi Cab Data", width=250, height=50)
         app.widgets.children=[title, app.date_slider,
-                              histogram1,
+                              app.distance_histogram,
                               Paragraph(text="",
                                         width=250, height=50),
-                              histogram2]
+                              app.time_histogram]
         app.children = [app.widgets, app.pickup_plot, app.dropoff_plot]
         return app
 
@@ -265,19 +289,18 @@ class TaxiApp(HBox):
     def setup_events(self):
         if self.pickup_raw_plot_source:
             self.pickup_raw_plot_source.on_change('data_geometry',
-                                                  self, 'pickup_selector')
+                                                  self, 'update_filters')
         if self.dropoff_raw_plot_source:
             self.dropoff_raw_plot_source.on_change('data_geometry',
-                                                   self, 'dropoff_selector')
+                                                   self, 'update_filters')
         if self.date_slider:
             self.date_slider.on_change('value', self, 'date_slider_change')
         if self.trip_distance_source:
             self.trip_distance_source.on_change('data_geometry', self,
-                                                'trip_distance_change')
+                                                'update_filters')
         if self.trip_time_source:
             self.trip_time_source.on_change('data_geometry', self,
-                                            'trip_time_change')
-
+                                            'update_filters')
 from partition import ARDataset
 ds = ARDataset()
 def get_data(pickup, local_bounds, filters):

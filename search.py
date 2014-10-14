@@ -8,6 +8,7 @@ import time
 import pandas as pd
 import cStringIO as StringIO
 from kitchensink import setup_client, client, do, du, dp
+from kitchensink.admin import timethis
 
 def get_length(source):
     f = h5py.File(source.local_path(), 'r')
@@ -35,14 +36,17 @@ def boolfilter(source, start, end, query_dict, prefilter=None):
         boolvect = prefilter.obj()
     f = h5py.File(source.local_path(), 'r')
     for field, operations in query_dict.items():
-        ds = f[field]
-        data = ds[start:end]
-        for op in operations:
-            val = op(data)
-            result = boolvect & val
-            boolvect = result
-    obj = do(boolvect)
-    obj.save(prefix='index')
+        with timethis('load_%s' % field):
+            ds = f[field]
+            data = ds[start:end]
+        with timethis('filter_%s' % field):
+            for op in operations:
+                val = op(data)
+                result = boolvect & val
+                boolvect = result
+    with timethis('saving'):
+        obj = do(boolvect)
+        obj.save(prefix='index')
     return obj
 
 def smartslice(ds, start, end, boolvect=None):
@@ -91,11 +95,13 @@ class Chunked(object):
     @property
     def chunks(self):
         if self._chunks is not None:
+            print len(self._chunks), "numchunks"
             return self._chunks
         self._chunks = list(self.get_chunks())
+        print len(self._chunks), "numchunks"
         return self._chunks
 
-    def get_chunks(self, chunksize=6000000):
+    def get_chunks(self, chunksize=3000000):
         for source, length in zip(self.sources, self.lengths):
             c = chunks(length, target=chunksize)
             for start, end in c:
