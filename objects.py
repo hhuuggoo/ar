@@ -64,11 +64,11 @@ class TaxiApp(HBox):
     date_slider = Instance(DateRangeSlider)
     filters = Dict(String, Any)
     trip_time_bins = np.linspace(0, 3600, 25)
-    trip_distance_bins = np.linspace(0.01, 10, 25)
+    trip_distance_bins = np.linspace(0.01, 20, 25)
     distance_histogram = Instance(Plot)
     time_histogram = Instance(Plot)
     hour_selector = Instance(Select)
-    day_of_week_selector = Instance(MultiSelect)
+    day_of_week_selector = Instance(Select)
 
     regular = Instance(HBox)
     filtered = Instance(HBox)
@@ -158,6 +158,7 @@ class TaxiApp(HBox):
             lymax = max(geom['y0'], geom['y1'])
             self.filters['pickup_latitude'] = [lymin, lymax]
             self.filters['pickup_longitude'] = [lxmin, lxmax]
+
         if not self.dropoff_raw_plot_source.data_geometry:
             self.filters.pop('dropoff_latitude', None)
             self.filters.pop('dropoff_longitude', None)
@@ -170,28 +171,28 @@ class TaxiApp(HBox):
             self.filters['dropoff_latitude'] = [lymin, lymax]
             self.filters['dropoff_longitude'] = [lxmin, lxmax]
 
-        if not self.pickup_comparison_raw_plot_source.data_geometry:
-            self.filters.pop('pickup_latitude', None)
-            self.filters.pop('pickup_longitude', None)
-        else:
-            geom = self.pickup_comparison_raw_plot_source.data_geometry
-            lxmin = min(geom['x0'], geom['x1'])
-            lxmax = max(geom['x0'], geom['x1'])
-            lymin = min(geom['y0'], geom['y1'])
-            lymax = max(geom['y0'], geom['y1'])
-            self.filters['pickup_latitude'] = [lymin, lymax]
-            self.filters['pickup_longitude'] = [lxmin, lxmax]
-        if not self.dropoff_comparison_raw_plot_source.data_geometry:
-            self.filters.pop('dropoff_latitude', None)
-            self.filters.pop('dropoff_longitude', None)
-        else:
-            geom = self.dropoff_comparison_raw_plot_source.data_geometry
-            lxmin = min(geom['x0'], geom['x1'])
-            lxmax = max(geom['x0'], geom['x1'])
-            lymin = min(geom['y0'], geom['y1'])
-            lymax = max(geom['y0'], geom['y1'])
-            self.filters['dropoff_latitude'] = [lymin, lymax]
-            self.filters['dropoff_longitude'] = [lxmin, lxmax]
+        # if not self.pickup_comparison_raw_plot_source.data_geometry:
+        #     self.filters.pop('pickup_latitude', None)
+        #     self.filters.pop('pickup_longitude', None)
+        # else:
+        #     geom = self.pickup_comparison_raw_plot_source.data_geometry
+        #     lxmin = min(geom['x0'], geom['x1'])
+        #     lxmax = max(geom['x0'], geom['x1'])
+        #     lymin = min(geom['y0'], geom['y1'])
+        #     lymax = max(geom['y0'], geom['y1'])
+        #     self.filters['pickup_latitude'] = [lymin, lymax]
+        #     self.filters['pickup_longitude'] = [lxmin, lxmax]
+        # if not self.dropoff_comparison_raw_plot_source.data_geometry:
+        #     self.filters.pop('dropoff_latitude', None)
+        #     self.filters.pop('dropoff_longitude', None)
+        # else:
+        #     geom = self.dropoff_comparison_raw_plot_source.data_geometry
+        #     lxmin = min(geom['x0'], geom['x1'])
+        #     lxmax = max(geom['x0'], geom['x1'])
+        #     lymin = min(geom['y0'], geom['y1'])
+        #     lymax = max(geom['y0'], geom['y1'])
+        #     self.filters['dropoff_latitude'] = [lymin, lymax]
+        #     self.filters['dropoff_longitude'] = [lxmin, lxmax]
 
         self._dirty = True
         try:
@@ -302,10 +303,8 @@ class TaxiApp(HBox):
         app.make_trip_distance_histogram()
         app.make_trip_time_histogram()
         app.widgets = VBoxForm()
-        app.day_of_week_selector = MultiSelect.create(
-            options=['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday',
-                     'Saturday', 'Sunday'
-                 ],
+        app.day_of_week_selector = Select.create(
+            options=["-----", 'Weekday', 'Friday/Saturday/Sunday', 'Saturday/Sunday'],
             name='Day Of Week'
         )
         app.date_slider = DateRangeSlider(value=(dt.datetime(2012, 1, 1),
@@ -435,11 +434,14 @@ class TaxiApp(HBox):
             Saturday=5,
             Sunday=6
         )
-        if new is None:
-            self.filters.pop('day_of_week', None)
+        if new == 'Weekday':
+            self.filters['day_of_week'] = [0,1,2,3,4]
+        elif new == 'Friday/Saturday/Sunday':
+            self.filters['day_of_week'] = [4,5,6]
+        elif new == 'Saturday/Sunday':
+            self.filters['day_of_week'] = [5,6]
         else:
-            dow = [mapping[x] for x in new]
-            self.filters['day_of_week'] = [dow]
+            self.filters.pop('day_of_week')
         self._dirty = True
         self.filter()
     def setup_events(self):
@@ -490,7 +492,7 @@ def get_time_histogram(filters):
           'y' : (counts/2.0).tolist()}
     return data
 
-trip_distance_bins = np.linspace(0.01, 10, 25)
+trip_distance_bins = np.linspace(0.01, 20, 25)
 def get_distance_histogram(filters):
     c = ds.histogram('trip_distance', trip_distance_bins, filters=filters)
     counts = ds.finish_histogram(c.br(profile='distance_histogram'))

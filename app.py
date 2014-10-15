@@ -3,6 +3,7 @@ import time
 import jinja2
 import numpy as np
 import pandas as pd
+import scipy.ndimage
 from flask import jsonify, send_from_directory, request
 from werkzeug.exceptions import BadRequest
 import logging
@@ -140,13 +141,36 @@ def taxidatavsregular(pickup):
     if filters:
         unfiltered = get_data(pickup, bounds, None)
         filtered = get_data(pickup, bounds, filters)
+        # marker = np.array([[1,1], [1,1]])
+        # filtered = scipy.ndimage.convolve(filtered, marker)
+        # unfiltered = scipy.ndimage.convolve(unfiltered, marker)
+        # import cPickle as pickle
+        # with open("unfiltered.pkl", "w+") as f:
+        #     pickle.dump(unfiltered, f, -1)
+
+        # with open("filtered.pkl", "w+") as f:
+        #     pickle.dump(filtered, f, -1)
+
         percents = np.percentile(unfiltered[unfiltered!=0], np.arange(100))
         unfiltered = np.interp(unfiltered, percents, np.arange(100))
         percents = np.percentile(filtered[filtered!=0], np.arange(100))
         filtered = np.interp(filtered, percents, np.arange(100))
+
+        ##truncate data
+        filtered[filtered < 50] = 0
+        unfiltered[filtered < 50] = 0
+
         data = filtered - unfiltered
+
+        #flatten the dynamic range
+        #data = data ** 0.333
+        data [data > 0] = data[data>0] ** 0.333
+
+        #linearize it
         data[data > 0] = data[data > 0] / data.max()
         data[data < 0] = - (data[data < 0] / data.min())
+
+        #convert to ints
         data = data - data.min()
         data = data / data.max()
         data = data *255
