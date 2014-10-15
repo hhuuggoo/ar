@@ -8,7 +8,7 @@ from werkzeug.exceptions import BadRequest
 import logging
 logging.getLogger("requests.packages.urllib3.connectionpool").setLevel(logging.WARNING)
 from kitchensink import setup_client, client, do, du, dp
-setup_client('http://localhost:6323/')
+setup_client('http://power:6323/')
 
 
 from bokeh.server.app import bokeh_app

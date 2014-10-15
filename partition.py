@@ -168,6 +168,7 @@ def aggregate(results, grid_shape):
 
 from fast_project import project as fast_project
 from kitchensink.admin import timethis
+import ardata
 def render(source, start, end, filters, grid_data_bounds,
            grid_shape, mark, xfield, yfield):
     with timethis('init'):
@@ -182,10 +183,23 @@ def render(source, start, end, filters, grid_data_bounds,
     with timethis('loading'):
         f = h5py.File(path, 'r')
         try:
-            ds1 = f[xfield]
-            xdata = smartslice(ds1, start, end, bvector)
-            ds2 = f[yfield]
-            ydata = smartslice(ds2, start, end, bvector)
+            ds1 = ardata.cached(xfield)
+            if ds1 is None:
+                ds1 = f[xfield]
+                xdata = smartslice(ds1, start, end, bvector)
+            else:
+                xdata = ds1[start:end]
+                if bvector is not None:
+                    xdata = xdata[bvector]
+
+            ds2 = ardata.cached(yfield)
+            if ds2 is None:
+                ds2 = f[yfield]
+                ydata = smartslice(ds2, start, end, bvector)
+            else:
+                ydata = ds2[start:end]
+                if bvector is not None:
+                    ydata = ydata[bvector]
         finally:
             f.close()
     with timethis('project'):

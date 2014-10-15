@@ -3,7 +3,7 @@ cimport numpy as np
 ctypedef np.float64_t FLOAT_t
 from libc.math cimport floor, ceil
 import math
-import cython          
+import cython
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
@@ -29,16 +29,38 @@ def project(np.ndarray[FLOAT_t, ndim=1] xdata, np.ndarray[FLOAT_t, ndim=1] ydata
     xmark_shape = mark.shape[0]
     ymark_shape = mark.shape[1]
     datalen = len(xdata)
-    cdef float x, y
     for idx in range(datalen):
-        x = xdata[idx]
-        y = ydata[idx]
-        if (x <= xmin) or (x >= xmax) or (y <= ymin) or (y >= ymax):
+        if xdata[idx] <= xmin or xdata[idx] >=xmax or \
+           ydata[idx] <=ymin or ydata[idx]>=ymax:
             continue
-        xcoord = (x - xmin) / xslope
-        ycoord = (y - ymin) / yslope
-        xx = <int> floor(xcoord)
-        yy = <int> floor(ycoord)
-        if xx > 0 and xx < xshape and yy <yshape and yy>0:
+        xcoord = (xdata[idx] - xmin) / xslope
+        ycoord = (ydata[idx] - ymin) / yslope
+        xcoord_int = (<int> floor(xcoord))
+        ycoord_int = (<int> floor(ycoord))
+        # xrem = xcoord - xcoord_int
+        # yrem = ycoord - ycoord_int
+        # xbase = 1 - xrem
+        # ybase = 1 - yrem
+        # xoffset = xcoord_int + 1
+        # yoffset = ycoord_int + 1
+
+        xx = xcoord_int
+        yy = ycoord_int
+        if xx > 0 and xx < xshape and xx > 0 and yy <yshape and yy>0:
             grid[xx, yy] += 1;
+        # xx = xoffset
+        # yy = ycoord_int
+        # factor = xrem * ybase
+        # if xx > 0 and xx < xshape and xx > 0 and yy <yshape and yy>0:
+        #     grid[xx, yy] += factor
+        # xx = xcoord_int
+        # yy = yoffset
+        # factor = xbase * yrem
+        # if xx > 0 and xx < xshape and xx > 0 and yy <yshape and yy>0:
+        #     grid[xx, yy] += factor
+        # xx = xoffset
+        # yy = yoffset
+        # factor = xrem * yrem
+        # if xx > 0 and xx < xshape and xx > 0 and yy <yshape and yy>0:
+        #     grid[xx, yy] += factor
     return grid
