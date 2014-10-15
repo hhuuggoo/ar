@@ -5,7 +5,9 @@ import pandas as pd
 from kitchensink import setup_client, client, do, du, dp
 
 from bokeh.objects import  ServerDataSource, Plot, ColumnDataSource, Range1d
-from bokeh.widgets import HBox, VBox, VBoxForm, DateRangeSlider, Paragraph, Select
+from bokeh.widgets import (HBox, VBox, VBoxForm,
+                           DateRangeSlider, Paragraph, Select,
+                           MultiSelect)
 
 from bokeh.plot_object import PlotObject
 from bokeh.crossfilter.plotting import make_histogram
@@ -66,6 +68,7 @@ class TaxiApp(HBox):
     distance_histogram = Instance(Plot)
     time_histogram = Instance(Plot)
     hour_selector = Instance(Select)
+    day_of_week_selector = Instance(MultiSelect)
 
     regular = Instance(HBox)
     filtered = Instance(HBox)
@@ -166,6 +169,30 @@ class TaxiApp(HBox):
             lymax = max(geom['y0'], geom['y1'])
             self.filters['dropoff_latitude'] = [lymin, lymax]
             self.filters['dropoff_longitude'] = [lxmin, lxmax]
+
+        if not self.pickup_comparison_raw_plot_source.data_geometry:
+            self.filters.pop('pickup_latitude', None)
+            self.filters.pop('pickup_longitude', None)
+        else:
+            geom = self.pickup_comparison_raw_plot_source.data_geometry
+            lxmin = min(geom['x0'], geom['x1'])
+            lxmax = max(geom['x0'], geom['x1'])
+            lymin = min(geom['y0'], geom['y1'])
+            lymax = max(geom['y0'], geom['y1'])
+            self.filters['pickup_latitude'] = [lymin, lymax]
+            self.filters['pickup_longitude'] = [lxmin, lxmax]
+        if not self.dropoff_comparison_raw_plot_source.data_geometry:
+            self.filters.pop('dropoff_latitude', None)
+            self.filters.pop('dropoff_longitude', None)
+        else:
+            geom = self.dropoff_comparison_raw_plot_source.data_geometry
+            lxmin = min(geom['x0'], geom['x1'])
+            lxmax = max(geom['x0'], geom['x1'])
+            lymin = min(geom['y0'], geom['y1'])
+            lymax = max(geom['y0'], geom['y1'])
+            self.filters['dropoff_latitude'] = [lymin, lymax]
+            self.filters['dropoff_longitude'] = [lxmin, lxmax]
+
         self._dirty = True
         try:
             request.filters_updated = True
@@ -275,6 +302,12 @@ class TaxiApp(HBox):
         app.make_trip_distance_histogram()
         app.make_trip_time_histogram()
         app.widgets = VBoxForm()
+        app.day_of_week_selector = MultiSelect.create(
+            options=['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday',
+                     'Saturday', 'Sunday'
+                 ],
+            name='Day Of Week'
+        )
         app.date_slider = DateRangeSlider(value=(dt.datetime(2012, 1, 1),
                                                  dt.datetime(2013, 1, 28)),
                                           bounds=(dt.datetime(2012, 12, 31),
@@ -296,6 +329,7 @@ class TaxiApp(HBox):
         app.widgets.children=[title, app.date_slider,
                               Paragraph(width=250, height=10),
                               app.hour_selector,
+                              app.day_of_week_selector,
                               Paragraph(width=250, height=10),
                               app.distance_histogram,
                               Paragraph(text="",
@@ -322,6 +356,10 @@ class TaxiApp(HBox):
         query_dict = {}
         def selector(minval, maxval):
             return lambda x : (x >= minval) & (x <= maxval)
+
+        def in1d(data):
+            return lambda x : np.in1d(x, data)
+
         for k,v in self.filters.items():
             if k in {'pickup_datetime', 'pickup_latitude',
                      'pickup_longitude',
@@ -332,6 +370,9 @@ class TaxiApp(HBox):
                 minval = min(v)
                 maxval = max(v)
                 query_dict[k] = [selector(minval, maxval)]
+            if k in {'day_of_week'}:
+                query_dict[k] = [in1d(v)]
+
         if len(query_dict) == 0:
             self.pickup_ar_plot_source.filter_url = None
             self.dropoff_ar_plot_source.filter_url = None
@@ -384,15 +425,41 @@ class TaxiApp(HBox):
         self._dirty = True
         self.filter()
 
+    def day_of_week_change(self, obj, attrname, old, new):
+        mapping = dict(
+            Monday=0,
+            Tuesday=1,
+            Wednesday=2,
+            Thursday=3,
+            Friday=4,
+            Saturday=5,
+            Sunday=6
+        )
+        if new is None:
+            self.filters.pop('day_of_week', None)
+        else:
+            dow = [mapping[x] for x in new]
+            self.filters['day_of_week'] = [dow]
+        self._dirty = True
+        self.filter()
     def setup_events(self):
         if self.hour_selector:
             self.hour_selector.on_change('value', self, 'hour_change')
+        if self.day_of_week_selector:
+            self.day_of_week_selector.on_change('value', self, 'day_of_week_change')
         if self.pickup_raw_plot_source:
             self.pickup_raw_plot_source.on_change('data_geometry',
                                                   self, 'update_filters')
         if self.dropoff_raw_plot_source:
             self.dropoff_raw_plot_source.on_change('data_geometry',
                                                    self, 'update_filters')
+        if self.pickup_comparison_raw_plot_source:
+            self.pickup_comparison_raw_plot_source.on_change('data_geometry',
+                                                  self, 'update_filters')
+        if self.dropoff_comparison_raw_plot_source:
+            self.dropoff_comparison_raw_plot_source.on_change('data_geometry',
+                                                   self, 'update_filters')
+
         if self.trip_distance_source:
             self.trip_distance_source.on_change('data_geometry', self,
                                                 'update_filters')
