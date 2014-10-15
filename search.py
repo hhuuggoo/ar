@@ -49,7 +49,18 @@ def boolfilter(source, start, end, query_dict, prefilter=None):
         obj.save(prefix='index')
     return obj
 
+import ardata
 def smartslice(ds, start, end, boolvect=None):
+    name = ds.name[1:]
+    mapped = ardata.mread(name)
+    if mapped is not None:
+        print "GOT MAPPED", name, start, end
+        data = mapped[start:end]
+        if boolvect is not None:
+            print boolvect.shape, mapped.shape, data.shape
+            data = data[boolvect]
+        return data
+    print "NO MAPPED", name
     if boolvect is None:
         return ds[start:end]
     data = np.empty(np.sum(boolvect), ds.dtype)
@@ -101,7 +112,7 @@ class Chunked(object):
         print len(self._chunks), "numchunks"
         return self._chunks
 
-    def get_chunks(self, chunksize=9000000):
+    def get_chunks(self, chunksize=4000000):
         for source, length in zip(self.sources, self.lengths):
             c = chunks(length, target=chunksize)
             for start, end in c:

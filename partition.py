@@ -75,7 +75,7 @@ class ARDataset(object):
         for source, start, end in self.chunked().chunks:
             c.bc(render, source, start, end, filters,
                  local_bounds, grid_shape, mark,
-                 xfield, yfield, _intermediate_results=False,
+                 xfield, yfield, _intermediate_results=True,
                  _no_route_data=True)
         c.execute()
         results = c.br(profile='project_profile_%s' % xfield)
@@ -85,7 +85,7 @@ class ARDataset(object):
         c = client()
         chunked = self.chunked()
         for source, start, end in chunked.chunks:
-            c.bc(boolfilter, source, start, end, query_dict, _intermediate_results=False, _no_route_data=True)
+            c.bc(boolfilter, source, start, end, query_dict, _intermediate_results=True, _no_route_data=True)
         c.execute()
         results = c.br(profile='profile_query')
         output = {}
@@ -109,7 +109,7 @@ class ARDataset(object):
         for k, v in process_dict.items():
             v = [du(x) for x in v]
             queue_name = c.queue('default', host=k)
-            c.bc(aggregate, v, grid_shape, _intermediate_results=False, _queue_name=queue_name)
+            c.bc(aggregate, v, grid_shape, _intermediate_results=True, _queue_name=queue_name)
         c.execute()
         results = c.br(profile='aggregate')
         results = [x.obj() for x in results]
@@ -168,7 +168,6 @@ def aggregate(results, grid_shape):
 
 from fast_project import project as fast_project
 from kitchensink.admin import timethis
-import ardata
 def render(source, start, end, filters, grid_data_bounds,
            grid_shape, mark, xfield, yfield):
     with timethis('init'):
@@ -183,23 +182,10 @@ def render(source, start, end, filters, grid_data_bounds,
     with timethis('loading'):
         f = h5py.File(path, 'r')
         try:
-            ds1 = ardata.cached(xfield)
-            if ds1 is None:
-                ds1 = f[xfield]
-                xdata = smartslice(ds1, start, end, bvector)
-            else:
-                xdata = ds1[start:end]
-                if bvector is not None:
-                    xdata = xdata[bvector]
-
-            ds2 = ardata.cached(yfield)
-            if ds2 is None:
-                ds2 = f[yfield]
-                ydata = smartslice(ds2, start, end, bvector)
-            else:
-                ydata = ds2[start:end]
-                if bvector is not None:
-                    ydata = ydata[bvector]
+            ds1 = f[xfield]
+            xdata = smartslice(ds1, start, end, bvector)
+            ds2 = f[yfield]
+            ydata = smartslice(ds2, start, end, bvector)
         finally:
             f.close()
     with timethis('project'):

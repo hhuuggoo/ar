@@ -18,3 +18,4 @@ import cStringIO as StringIO
 from kitchensink import setup_client, client, do, du, dp
 from kitchensink import settings
 from search import Chunked, smartslice, boolfilter
+import ardata
