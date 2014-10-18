@@ -75,17 +75,18 @@ class ARDataset(object):
         for source, start, end in self.chunked().chunks:
             c.bc(render, source, start, end, filters,
                  local_bounds, grid_shape, mark,
-                 xfield, yfield, _intermediate_results=ksdebug,
-                 _no_route_data=True)
+                 xfield, yfield, _intermediate_results=ksdebug)
+
         c.execute()
         results = c.br(profile='project_profile_%s' % xfield)
+        results = [x.obj() for x in results]
         return sum(results)
 
     def query(self, query_dict):
         c = client()
         chunked = self.chunked()
         for source, start, end in chunked.chunks:
-            c.bc(boolfilter, source, start, end, query_dict, _intermediate_results=ksdebug, _no_route_data=True)
+            c.bc(boolfilter, source, start, end, query_dict, _intermediate_results=ksdebug)
         c.execute()
         results = c.br(profile='profile_query')
         output = {}
@@ -124,7 +125,7 @@ class ARDataset(object):
         else:
             filters = filters.obj()
         for source, start, end in self.chunked().chunks:
-            c.bc(histogram, source, start, end, filters, field, bins, _intermediate_results=ksdebug, _no_route_data=True)
+            c.bc(histogram, source, start, end, filters, field, bins, _intermediate_results=ksdebug)
         ed = time.time()
         c.execute()
         return c
@@ -192,7 +193,7 @@ def render(source, start, end, filters, grid_data_bounds,
         mark = mark.astype('float64')
         args = (xdata, ydata, grid) + grid_data_bounds + (mark,)
         fast_project(*args)
-    return grid
+    return do(grid, fmt='bloscpickle')
 
 
 if __name__ == "__main__":
