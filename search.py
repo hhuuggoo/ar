@@ -45,7 +45,7 @@ def boolfilter(source, start, end, query_dict, prefilter=None):
                 result = boolvect & val
                 boolvect = result
     with timethis('saving'):
-        obj = do(boolvect)
+        obj = do(boolvect, fmt='bloscpickle')
         obj.save(prefix='index')
     return obj
 

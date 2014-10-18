@@ -42,3 +42,19 @@ def mread(name):
         dtype = cPickle.load(f)
     mapped = np.memmap(data_name, mode='r', dtype=dtype)
     return mapped
+
+from kitchensink.serialization import register_serialization
+import blosc
+import cPickle as pickle
+def serialize(obj):
+    print 'blosc'
+    data = pickle.dumps(obj, -1)
+    data = blosc.compress(data, 8)
+    return data
+
+def deserialize(data):
+    data = blosc.decompress(data)
+    obj = pickle.loads(data)
+    return obj
+
+register_serialization('bloscpickle', serialize, deserialize)
