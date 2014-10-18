@@ -193,7 +193,9 @@ def render(source, start, end, filters, grid_data_bounds,
         mark = mark.astype('float64')
         args = (xdata, ydata, grid) + grid_data_bounds + (mark,)
         fast_project(*args)
-    return do(grid, fmt='bloscpickle')
+    obj = do(grid, fmt='bloscpickle')
+    obj.save()
+    return obj
 
 
 if __name__ == "__main__":
