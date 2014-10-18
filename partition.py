@@ -79,7 +79,6 @@ class ARDataset(object):
 
         c.execute()
         results = c.br(profile='project_profile_%s' % xfield)
-        results = [x.obj() for x in results]
         return sum(results)
 
     def query(self, query_dict):
@@ -193,9 +192,7 @@ def render(source, start, end, filters, grid_data_bounds,
         mark = mark.astype('float64')
         args = (xdata, ydata, grid) + grid_data_bounds + (mark,)
         fast_project(*args)
-    obj = do(grid, fmt='bloscpickle')
-    obj.save()
-    return obj
+    return grid
 
 
 if __name__ == "__main__":
