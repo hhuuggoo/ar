@@ -12,7 +12,8 @@ import cStringIO as StringIO
 from kitchensink import setup_client, client, do, du, dp
 from kitchensink import settings
 from search import Chunked, smartslice, boolfilter
-
+ksdebug = True
+no_route_data = False
 class ARDataset(object):
     overlap = 3
     lxres = 350.0
@@ -75,8 +76,9 @@ class ARDataset(object):
         for source, start, end in self.chunked().chunks:
             c.bc(render, source, start, end, filters,
                  local_bounds, grid_shape, mark,
-                 xfield, yfield, _intermediate_results=False,
-                 _no_route_data=True)
+                 xfield, yfield, _intermediate_results=ksdebug,
+                 _no_route_data=no_route_data)
+
         c.execute()
         results = c.br(profile='project_profile_%s' % xfield)
         return sum(results)
@@ -85,7 +87,7 @@ class ARDataset(object):
         c = client()
         chunked = self.chunked()
         for source, start, end in chunked.chunks:
-            c.bc(boolfilter, source, start, end, query_dict, _intermediate_results=False, _no_route_data=True)
+            c.bc(boolfilter, source, start, end, query_dict, _intermediate_results=ksdebug, _no_route_data=no_route_data)
         c.execute()
         results = c.br(profile='profile_query')
         output = {}
@@ -109,7 +111,7 @@ class ARDataset(object):
         for k, v in process_dict.items():
             v = [du(x) for x in v]
             queue_name = c.queue('default', host=k)
-            c.bc(aggregate, v, grid_shape, _intermediate_results=False, _queue_name=queue_name)
+            c.bc(aggregate, v, grid_shape, _intermediate_results=ksdebug, _queue_name=queue_name, _no_route_data=no_route_data)
         c.execute()
         results = c.br(profile='aggregate')
         results = [x.obj() for x in results]
@@ -124,7 +126,7 @@ class ARDataset(object):
         else:
             filters = filters.obj()
         for source, start, end in self.chunked().chunks:
-            c.bc(histogram, source, start, end, filters, field, bins, _intermediate_results=True, _no_route_data=True)
+            c.bc(histogram, source, start, end, filters, field, bins, _intermediate_results=ksdebug, _no_route_data=no_route_data)
         ed = time.time()
         c.execute()
         return c

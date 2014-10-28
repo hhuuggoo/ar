@@ -3,12 +3,14 @@ import time
 import jinja2
 import numpy as np
 import pandas as pd
+import scipy.ndimage
 from flask import jsonify, send_from_directory, request
 from werkzeug.exceptions import BadRequest
 import logging
 logging.getLogger("requests.packages.urllib3.connectionpool").setLevel(logging.WARNING)
 from kitchensink import setup_client, client, do, du, dp
-setup_client('http://localhost:6323/')
+from kitchensink.admin import timethis
+setup_client('http://power:6323/')
 
 
 from bokeh.server.app import bokeh_app
@@ -62,7 +64,8 @@ def taxidata(pickup):
                   min(bounds[3], gbounds[3]))
     else:
         bounds = gbounds
-    data = get_data(pickup, bounds, filters)
+    with timethis('regular project'):
+        data = get_data(pickup, bounds, filters)
     data = data ** 0.2
     data = data - data.min()
     data = data / data.max()
@@ -138,20 +141,45 @@ def taxidatavsregular(pickup):
     else:
         bounds = gbounds
     if filters:
-        unfiltered = get_data(pickup, bounds, None)
-        filtered = get_data(pickup, bounds, filters)
-        percents = np.percentile(unfiltered[unfiltered!=0], np.arange(100))
-        unfiltered = np.interp(unfiltered, percents, np.arange(100))
-        percents = np.percentile(filtered[filtered!=0], np.arange(100))
-        filtered = np.interp(filtered, percents, np.arange(100))
-        data = filtered - unfiltered
-        data[data > 0] = data[data > 0] / data.max()
-        data[data < 0] = - (data[data < 0] / data.min())
-        data = data - data.min()
-        data = data / data.max()
-        data = data *255
-        data =  data.astype('int64')
-        palette = 'seismic-256'
+        with timethis('unfiltered'):
+            unfiltered = get_data(pickup, bounds, None)
+        with timethis('filtered'):
+            filtered = get_data(pickup, bounds, filters)
+        # marker = np.array([[1,1], [1,1]])
+        # filtered = scipy.ndimage.convolve(filtered, marker)
+        # unfiltered = scipy.ndimage.convolve(unfiltered, marker)
+        # import cPickle as pickle
+        # with open("unfiltered.pkl", "w+") as f:
+        #     pickle.dump(unfiltered, f, -1)
+
+        # with open("filtered.pkl", "w+") as f:
+        #     pickle.dump(filtered, f, -1)
+        with timethis('procesing'):
+            percents = np.percentile(unfiltered[unfiltered!=0], np.arange(100))
+            unfiltered = np.interp(unfiltered, percents, np.arange(100))
+            percents = np.percentile(filtered[filtered!=0], np.arange(100))
+            filtered = np.interp(filtered, percents, np.arange(100))
+
+            ##truncate data
+            filtered[filtered < 50] = 0
+            unfiltered[filtered < 50] = 0
+
+            data = filtered - unfiltered
+
+            #flatten the dynamic range
+            #data = data ** 0.333
+            data [data > 0] = data[data>0] ** 0.333
+
+            #linearize it
+            data[data > 0] = data[data > 0] / data.max()
+            data[data < 0] = - (data[data < 0] / data.min())
+
+            #convert to ints
+            data = data - data.min()
+            data = data / data.max()
+            data = data *255
+            data =  data.astype('int64')
+            palette = 'seismic-256'
     else:
         data = get_data(pickup, bounds, None)
         data = data ** 0.2
@@ -168,5 +196,6 @@ def taxidatavsregular(pickup):
                   palette=[palette])
     print output
     output['image'] = [data.tolist()]
-    result = make_json(ujson.dumps(output))
+    with timethis('json'):
+        result = make_json(ujson.dumps(output))
     return result
