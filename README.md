@@ -3,10 +3,11 @@ checkouts:
 - kitchensink commit: 79b8316d4b43e4c45c2ca5f2159538382a146186
 - ar commit: 1aed89fa19ae0efc8d33698112986680deb540e8
 
-run setup.py develop on bokeh/kitchensink
-build bokeh js
-add ar directory to a pth file in site-packages
-build ar with python setup.py build_ext --inplace
+### install
+- run setup.py develop on bokeh/kitchensink
+- build bokeh js
+- add ar directory to a pth file in site-packages
+- build ar with `python setup.py build_ext --inplace`
 
 ###data
 the instructions assume you have a `data` directory in hugo's home directory with a taxi folder including big.hdf5
