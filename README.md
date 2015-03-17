@@ -8,25 +8,25 @@ build bokeh js
 add ar directory to a pth file in site-packages
 build ar with python setup.py build_ext --inplace
 
-#data
+###data
 the instructions assume you have a `data` directory in hugo's home directory with a taxi folder including big.hdf5
 
 so `~hugo/data/taxi/big.hdf5`
 
-#start redis
+###start redis
 redis-server --port 9001
 
-#start kitchensink
+###start kitchensink
 ```
 python -m kitchensink.scripts.start --node-name=power --node-url=http://localhost:6323/ --num-workers=8 --module ksimports --no-redis --redis-conn=tcp://localhost:9001?db=9 --datadir /data/Raid5/home/hugo/data
 ```
 
-#start bokeh - note this assumes that bokeh/ar are peers (you can access ar/app.py with ../ar/app.py)
+###start bokeh - note this assumes that bokeh/ar are peers (you can access ar/app.py with ../ar/app.py)
 ```
 ./bokeh-server -djs --script ../ar/app.py --backend redis --redis-port=9001 --no-start-redis --ip=0.0.0.0 --bokeh-port=9002 --ws-port=903 --zmqaddr ipc:///tmp/hugo
 ```
 
-# run bootstrap
+### run bootstrap
 ```
 python -m bootstrap.py (in ar directory)
 ```
