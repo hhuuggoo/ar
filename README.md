@@ -24,7 +24,7 @@ python -m bootstrap.py (in ar directory)
 
 
 ### CONTENTS of python env which runs this project:
-
+```
 # platform: linux-64
 _license=1.1=py27_0
 abstract-rendering=0.5.1=np19py27_0
@@ -178,3 +178,4 @@ xlwt=0.7.5=py27_0
 yaml=0.1.4=0
 zeromq=4.0.4=0
 zlib=1.2.7=0
+```
