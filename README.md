@@ -1,6 +1,7 @@
-bokeh commit: 6602ea6bcef184303a18493c1311c040ccac0bd9
-kitchensink commit: 79b8316d4b43e4c45c2ca5f2159538382a146186
-ar commit: 1aed89fa19ae0efc8d33698112986680deb540e8
+checkouts:
+- bokeh commit: 6602ea6bcef184303a18493c1311c040ccac0bd9
+- kitchensink commit: 79b8316d4b43e4c45c2ca5f2159538382a146186
+- ar commit: 1aed89fa19ae0efc8d33698112986680deb540e8
 
 run setup.py develop on bokeh/kitchensink
 build bokeh js
