@@ -1,0 +1,2 @@
+bokeh commit: 6602ea6bcef184303a18493c1311c040ccac0bd9
+kitchensink commit: 79b8316d4b43e4c45c2ca5f2159538382a146186
