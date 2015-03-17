@@ -33,8 +33,8 @@ def memmap(arr, name):
     mapped.flush()
 
 def mread(name):
-    info = "/mnt/ramdisk/%s.info" % name
-    data_name = "/mnt/ramdisk/%s.nmap" % name
+    info = "/data/Raid5/home/hugo/ramdisk/%s.info" % name
+    data_name = "/data/Raid5/home/hugo/ramdisk/%s.nmap" % name
     if not (exists(data_name) and exists(info)):
         print 'could not find'
         return None
@@ -58,3 +58,12 @@ def deserialize(data):
     return obj
 
 register_serialization('bloscpickle', serialize, deserialize)
+
+if __name__ == "__main__":
+    import h5py
+    f = h5py.File("/home/hugo/data/taxi/big.hdf5")
+    for col in f.keys():
+        if f[col].dtype.kind == 'S':
+            continue
+        print col
+        memmap(f[col][:], col)
